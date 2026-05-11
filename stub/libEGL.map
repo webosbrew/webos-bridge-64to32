@@ -1,0 +1,46 @@
+/*
+ * libEGL.map  —  exported symbols for the aarch64 EGL stub
+ */
+
+EGL_1_4 {
+  global:
+    eglGetError;
+    eglGetDisplay;
+    eglInitialize;
+    eglTerminate;
+    eglReleaseThread;
+    eglQueryString;
+    eglGetConfigs;
+    eglChooseConfig;
+    eglGetConfigAttrib;
+    eglCreateWindowSurface;
+    eglCreatePbufferSurface;
+    eglCreatePixmapSurface;
+    eglCreatePbufferFromClientBuffer;
+    eglDestroySurface;
+    eglQuerySurface;
+    eglSurfaceAttrib;
+    eglBindTexImage;
+    eglReleaseTexImage;
+    eglCopyBuffers;
+    eglCreateContext;
+    eglDestroyContext;
+    eglMakeCurrent;
+    eglGetCurrentContext;
+    eglGetCurrentSurface;
+    eglGetCurrentDisplay;
+    eglQueryContext;
+    eglSwapBuffers;
+    eglSwapInterval;
+    eglWaitGL;
+    eglWaitNative;
+    eglWaitClient;
+    eglBindAPI;
+    eglQueryAPI;
+    eglGetProcAddress;
+    eglGetPlatformDisplayEXT;
+    eglCreateImageKHR;
+    eglDestroyImageKHR;
+  local:
+    *;
+};

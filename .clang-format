@@ -1,0 +1,19 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+
+BreakBeforeBraces: Allman
+
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+
+IncludeCategories:
+  - Regex: '^<GLES3/.*>'
+    Priority: 1
+  - Regex: '^<GLES2/.*>'
+    Priority: 2
+  - Regex: '.*'
+    Priority: 3
+SortIncludes: true

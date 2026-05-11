@@ -1,0 +1,14 @@
+out/
+include/webos-shell-32.h
+include/webos-shell.h
+include/webos-input-manager-32.h
+include/webos-input-manager.h
+tools/eglext.h
+tools/egl_generated.c
+tools/egl_generated.h
+tools/egl_invoke_dynamic.c
+tools/gles2_generated.c
+tools/gles2_generated.h
+tools/gles2_invoke_dynamic.c
+tools/gl2ext.h
+tools/.egl_gen_stamp

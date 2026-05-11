@@ -1,0 +1,10 @@
+{
+  "id": "org.webosbrew.bridge-64to32",
+  "version": "0.0.1",
+  "vendor": "webOS Homebrew",
+  "type": "native",
+  "title": "64 to 32-bit Bridge",
+  "main": "external_test_64",
+  "icon": "icon.png",
+  "appDescription": "EGL/GLES/Wayland 64-bit bridge and userspace for webOS."
+}

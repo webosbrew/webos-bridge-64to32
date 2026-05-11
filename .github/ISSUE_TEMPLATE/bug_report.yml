@@ -1,0 +1,58 @@
+name: Bug Report
+description: Report a problem with webOS 64 to 32 Bridge
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: tv_model
+    attributes:
+      label: TV Model Number
+      description: Settings → Support → TV Information → Model
+      placeholder: OLED65G45LW
+    validations:
+      required: true
+
+  - type: input
+    id: webos_version
+    attributes:
+      label: webOS Version
+      description: Settings → Support → TV Information → webOS TV Version
+      placeholder: webOS 11.2.0-3
+    validations:
+      required: true
+
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU Model
+      description: 'Output of: lscpu | grep "Model name"'
+      placeholder: Cortex-A53 / etc.
+    validations:
+      required: true
+
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel Version
+      description: 'Output of: uname -a'
+      placeholder: Linux webos 6.12.0 #1 SMP ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: Issue Description
+      description: Describe the problem in detail.
+      placeholder: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log File
+      description: Paste logs or attach a file.
+      render: shell
+    validations:
+      required: true

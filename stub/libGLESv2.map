@@ -1,0 +1,166 @@
+/*
+ * libGLESv2.map
+ *
+ * Controls which symbols are exported from the aarch64 stub .so.
+ * Everything not listed here stays hidden
+ *
+ * Keeping the export surface minimal:
+ *   • prevents symbol collisions when client dlopen()s other libraries
+ *   • avoids accidentally exporting bridge-internal helpers
+ */
+
+GLES_2_0 {
+  global:
+    /* ---- Textures ---- */
+    glActiveTexture;
+    glBindTexture;
+    glGenTextures;
+    glDeleteTextures;
+    glTexImage2D;
+    glTexSubImage2D;
+    glCompressedTexImage2D;
+    glCompressedTexSubImage2D;
+    glCopyTexImage2D;
+    glCopyTexSubImage2D;
+    glTexParameterf;
+    glTexParameterfv;
+    glTexParameteri;
+    glTexParameteriv;
+    glGetTexParameterfv;
+    glGetTexParameteriv;
+    glGenerateMipmap;
+    glPixelStorei;
+
+    /* ---- Buffers ---- */
+    glGenBuffers;
+    glDeleteBuffers;
+    glBindBuffer;
+    glBufferData;
+    glBufferSubData;
+    glGetBufferParameteriv;
+
+    /* ---- Framebuffers / Renderbuffers ---- */
+    glGenFramebuffers;
+    glDeleteFramebuffers;
+    glBindFramebuffer;
+    glFramebufferTexture2D;
+    glFramebufferRenderbuffer;
+    glCheckFramebufferStatus;
+    glGetFramebufferAttachmentParameteriv;
+    glGenRenderbuffers;
+    glDeleteRenderbuffers;
+    glBindRenderbuffer;
+    glRenderbufferStorage;
+    glGetRenderbufferParameteriv;
+
+    /* ---- Shaders ---- */
+    glCreateShader;
+    glDeleteShader;
+    glShaderSource;
+    glCompileShader;
+    glGetShaderiv;
+    glGetShaderInfoLog;
+    glGetShaderSource;
+    glShaderBinary;
+    glReleaseShaderCompiler;
+    glGetShaderPrecisionFormat;
+
+    /* ---- Programs ---- */
+    glCreateProgram;
+    glDeleteProgram;
+    glAttachShader;
+    glDetachShader;
+    glLinkProgram;
+    glUseProgram;
+    glValidateProgram;
+    glGetProgramiv;
+    glGetProgramInfoLog;
+    glGetAttachedShaders;
+
+    /* ---- Uniforms ---- */
+    glGetUniformLocation;
+    glGetActiveUniform;
+    glGetUniformfv;
+    glGetUniformiv;
+    glUniform1f;  glUniform1fv;  glUniform1i;  glUniform1iv;
+    glUniform2f;  glUniform2fv;  glUniform2i;  glUniform2iv;
+    glUniform3f;  glUniform3fv;  glUniform3i;  glUniform3iv;
+    glUniform4f;  glUniform4fv;  glUniform4i;  glUniform4iv;
+    glUniformMatrix2fv;
+    glUniformMatrix3fv;
+    glUniformMatrix4fv;
+
+    /* ---- Attributes ---- */
+    glGetAttribLocation;
+    glGetActiveAttrib;
+    glBindAttribLocation;
+    glVertexAttribPointer;
+    glEnableVertexAttribArray;
+    glDisableVertexAttribArray;
+    glGetVertexAttribfv;
+    glGetVertexAttribiv;
+    glGetVertexAttribPointerv;
+    glVertexAttrib1f;  glVertexAttrib1fv;
+    glVertexAttrib2f;  glVertexAttrib2fv;
+    glVertexAttrib3f;  glVertexAttrib3fv;
+    glVertexAttrib4f;  glVertexAttrib4fv;
+
+    /* ---- Draw ---- */
+    glDrawArrays;
+    glDrawElements;
+
+    /* ---- State ---- */
+    glViewport;
+    glScissor;
+    glEnable;
+    glDisable;
+    glIsEnabled;
+    glCullFace;
+    glFrontFace;
+    glLineWidth;
+    glPolygonOffset;
+    glSampleCoverage;
+    glHint;
+    glBlendColor;
+    glBlendEquation;
+    glBlendEquationSeparate;
+    glBlendFunc;
+    glBlendFuncSeparate;
+    glDepthFunc;
+    glDepthMask;
+    glDepthRangef;
+    glColorMask;
+    glStencilFunc;    glStencilFuncSeparate;
+    glStencilMask;    glStencilMaskSeparate;
+    glStencilOp;      glStencilOpSeparate;
+
+    /* ---- Clear ---- */
+    glClear;
+    glClearColor;
+    glClearDepthf;
+    glClearStencil;
+
+    /* ---- Query ---- */
+    glGetError;
+    glGetBooleanv;
+    glGetFloatv;
+    glGetIntegerv;
+    glGetString;
+    glReadPixels;
+
+    /* ---- Misc ---- */
+    glFinish;
+    glFlush;
+    glIsBuffer;
+    glIsFramebuffer;
+    glIsProgram;
+    glIsRenderbuffer;
+    glIsShader;
+    glIsTexture;
+
+    /* ---- EGL shim (needed for eglGetProcAddress lookups) ---- */
+    eglGetProcAddress;
+
+  local:
+    *;
+};

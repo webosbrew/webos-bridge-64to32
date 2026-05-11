@@ -1,0 +1,521 @@
+/*
+ * libGLESv3_2.map
+ *
+ * Controls exported symbols for GLES stub library.
+ */
+
+GLES_3_2 {
+
+global:
+
+    /* ==================================================================== */
+    /* GLES2 Core                                                           */
+    /* ==================================================================== */
+
+    /* ---- Textures ---- */
+
+    glActiveTexture;
+    glBindTexture;
+    glGenTextures;
+    glDeleteTextures;
+
+    glTexImage2D;
+    glTexSubImage2D;
+    glCompressedTexImage2D;
+    glCompressedTexSubImage2D;
+    glCopyTexImage2D;
+    glCopyTexSubImage2D;
+
+    glTexParameterf;
+    glTexParameterfv;
+    glTexParameteri;
+    glTexParameteriv;
+
+    glGetTexParameterfv;
+    glGetTexParameteriv;
+
+    glGenerateMipmap;
+    glPixelStorei;
+
+    /* ---- Buffers ---- */
+
+    glGenBuffers;
+    glDeleteBuffers;
+    glBindBuffer;
+
+    glBufferData;
+    glBufferSubData;
+
+    glGetBufferParameteriv;
+
+    /* ---- Framebuffers / Renderbuffers ---- */
+
+    glGenFramebuffers;
+    glDeleteFramebuffers;
+    glBindFramebuffer;
+
+    glFramebufferTexture2D;
+    glFramebufferRenderbuffer;
+    glCheckFramebufferStatus;
+    glGetFramebufferAttachmentParameteriv;
+
+    glGenRenderbuffers;
+    glDeleteRenderbuffers;
+    glBindRenderbuffer;
+    glRenderbufferStorage;
+    glGetRenderbufferParameteriv;
+
+    /* ---- Shader Objects ---- */
+
+    glCreateShader;
+    glDeleteShader;
+
+    glShaderSource;
+    glCompileShader;
+
+    glGetShaderiv;
+    glGetShaderInfoLog;
+    glGetShaderSource;
+
+    glShaderBinary;
+    glReleaseShaderCompiler;
+    glGetShaderPrecisionFormat;
+
+    /* ---- Program Objects ---- */
+
+    glCreateProgram;
+    glDeleteProgram;
+
+    glAttachShader;
+    glDetachShader;
+
+    glLinkProgram;
+    glUseProgram;
+    glValidateProgram;
+
+    glGetProgramiv;
+    glGetProgramInfoLog;
+    glGetAttachedShaders;
+
+    /* ---- Uniforms ---- */
+
+    glGetUniformLocation;
+    glGetActiveUniform;
+
+    glGetUniformfv;
+    glGetUniformiv;
+
+    glUniform1f; glUniform1fv;
+    glUniform1i; glUniform1iv;
+
+    glUniform2f; glUniform2fv;
+    glUniform2i; glUniform2iv;
+
+    glUniform3f; glUniform3fv;
+    glUniform3i; glUniform3iv;
+
+    glUniform4f; glUniform4fv;
+    glUniform4i; glUniform4iv;
+
+    glUniformMatrix2fv;
+    glUniformMatrix3fv;
+    glUniformMatrix4fv;
+
+    /* Matrix variants */
+
+    glUniformMatrix2x3fv;
+    glUniformMatrix3x2fv;
+    glUniformMatrix2x4fv;
+    glUniformMatrix4x2fv;
+    glUniformMatrix3x4fv;
+    glUniformMatrix4x3fv;
+
+    /* ---- Vertex Attributes ---- */
+
+    glGetAttribLocation;
+    glGetActiveAttrib;
+    glBindAttribLocation;
+
+    glVertexAttribPointer;
+
+    glEnableVertexAttribArray;
+    glDisableVertexAttribArray;
+
+    glGetVertexAttribfv;
+    glGetVertexAttribiv;
+    glGetVertexAttribPointerv;
+
+    glVertexAttrib1f;
+    glVertexAttrib1fv;
+
+    glVertexAttrib2f;
+    glVertexAttrib2fv;
+
+    glVertexAttrib3f;
+    glVertexAttrib3fv;
+
+    glVertexAttrib4f;
+    glVertexAttrib4fv;
+
+    /* ---- Draw ---- */
+
+    glDrawArrays;
+    glDrawElements;
+
+    /* ---- State ---- */
+
+    glViewport;
+    glScissor;
+
+    glEnable;
+    glDisable;
+    glIsEnabled;
+
+    glCullFace;
+    glFrontFace;
+    glLineWidth;
+    glPolygonOffset;
+
+    glSampleCoverage;
+    glHint;
+
+    glBlendColor;
+    glBlendEquation;
+    glBlendEquationSeparate;
+
+    glBlendFunc;
+    glBlendFuncSeparate;
+
+    glDepthFunc;
+    glDepthMask;
+    glDepthRangef;
+
+    glColorMask;
+
+    glStencilFunc;
+    glStencilFuncSeparate;
+
+    glStencilMask;
+    glStencilMaskSeparate;
+
+    glStencilOp;
+    glStencilOpSeparate;
+
+    /* ---- Clear ---- */
+
+    glClear;
+    glClearColor;
+    glClearDepthf;
+    glClearStencil;
+
+    /* ---- Queries ---- */
+
+    glGetError;
+    glGetBooleanv;
+    glGetFloatv;
+    glGetIntegerv;
+    glGetString;
+
+    glReadPixels;
+
+    /* ---- Misc ---- */
+
+    glFinish;
+    glFlush;
+
+    glIsBuffer;
+    glIsFramebuffer;
+    glIsProgram;
+    glIsRenderbuffer;
+    glIsShader;
+    glIsTexture;
+
+    eglGetProcAddress;
+
+    /* ==================================================================== */
+    /* GLES 3.0                                                             */
+    /* ==================================================================== */
+
+    /* ---- Vertex Arrays ---- */
+
+    glGenVertexArrays;
+    glDeleteVertexArrays;
+    glBindVertexArray;
+    glIsVertexArray;
+
+    /* ---- Integer Attributes ---- */
+
+    glVertexAttribI4i;
+    glVertexAttribI4iv;
+    glVertexAttribI4ui;
+    glVertexAttribI4uiv;
+    glVertexAttribIPointer;
+
+    glGetVertexAttribIiv;
+    glGetVertexAttribIuiv;
+
+    /* ---- Instancing ---- */
+
+    glDrawArraysInstanced;
+    glDrawElementsInstanced;
+    glVertexAttribDivisor;
+
+    /* ---- Buffer Mapping ---- */
+
+    glMapBufferRange;
+    glFlushMappedBufferRange;
+    glUnmapBuffer;
+
+    glCopyBufferSubData;
+
+    glBindBufferBase;
+    glBindBufferRange;
+
+    glGetBufferPointerv;
+    glGetBufferParameteri64v;
+
+    /* ---- Query Objects ---- */
+
+    glGenQueries;
+    glDeleteQueries;
+
+    glBeginQuery;
+    glEndQuery;
+
+    glGetQueryiv;
+    glGetQueryObjectuiv;
+
+    glIsQuery;
+
+    /* ---- Samplers ---- */
+
+    glGenSamplers;
+    glDeleteSamplers;
+
+    glBindSampler;
+    glIsSampler;
+
+    glSamplerParameteri;
+    glSamplerParameteriv;
+    glSamplerParameterf;
+    glSamplerParameterfv;
+
+    glSamplerParameterIiv;
+    glSamplerParameterIuiv;
+
+    glGetSamplerParameteriv;
+    glGetSamplerParameterfv;
+    glGetSamplerParameterIiv;
+    glGetSamplerParameterIuiv;
+
+    /* ---- Transform Feedback ---- */
+
+    glBeginTransformFeedback;
+    glEndTransformFeedback;
+
+    glTransformFeedbackVaryings;
+    glGetTransformFeedbackVarying;
+
+    glGenTransformFeedbacks;
+    glDeleteTransformFeedbacks;
+    glBindTransformFeedback;
+
+    glPauseTransformFeedback;
+    glResumeTransformFeedback;
+
+    glIsTransformFeedback;
+
+    /* ---- Uniform Blocks ---- */
+
+    glGetUniformuiv;
+
+    glUniform1ui; glUniform1uiv;
+    glUniform2ui; glUniform2uiv;
+    glUniform3ui; glUniform3uiv;
+    glUniform4ui; glUniform4uiv;
+
+    glGetUniformIndices;
+    glGetActiveUniformsiv;
+
+    glGetUniformBlockIndex;
+    glGetActiveUniformBlockiv;
+    glGetActiveUniformBlockName;
+
+    glUniformBlockBinding;
+
+    /* ---- Texture / Storage ---- */
+
+    glTexImage3D;
+    glTexSubImage3D;
+    glCopyTexSubImage3D;
+
+    glCompressedTexImage3D;
+    glCompressedTexSubImage3D;
+
+    glTexStorage2D;
+    glTexStorage3D;
+
+    glTexBuffer;
+    glTexBufferRange;
+
+    glCopyImageSubData;
+
+    /* ---- Indexed State ---- */
+
+    glColorMaski;
+
+    glEnablei;
+    glDisablei;
+    glIsEnabledi;
+
+    glGetBooleani_v;
+    glGetIntegeri_v;
+    glGetInteger64i_v;
+
+    glGetTexParameterIiv;
+    glGetTexParameterIuiv;
+
+    glTexParameterIiv;
+    glTexParameterIuiv;
+
+    /* ---- Sync ---- */
+
+    glFenceSync;
+    glDeleteSync;
+    glClientWaitSync;
+    glWaitSync;
+
+    glGetSynciv;
+    glIsSync;
+
+    /* ---- Misc ---- */
+
+    glGetStringi;
+    glGetInteger64v;
+    glGetFragDataLocation;
+    glGetPointerv;
+    glGetInternalformativ;
+
+    /* ---- Program Binary ---- */
+
+    glGetProgramBinary;
+    glProgramBinary;
+    glProgramParameteri;
+
+    /* ---- Multisample/FBO ---- */
+
+    glRenderbufferStorageMultisample;
+    glBlitFramebuffer;
+
+    glFramebufferTextureLayer;
+    glFramebufferTexture;
+
+    glReadBuffer;
+    glDrawBuffers;
+
+    glClearBufferfi;
+    glClearBufferfv;
+    glClearBufferiv;
+    glClearBufferuiv;
+
+    /* ==================================================================== */
+    /* GLES 3.1                                                             */
+    /* ==================================================================== */
+
+    /* ---- Compute ---- */
+
+    glDispatchCompute;
+    glDispatchComputeIndirect;
+
+    glMemoryBarrier;
+    glMemoryBarrierByRegion;
+
+    /* ---- Program Pipelines ---- */
+
+    glUseProgramStages;
+
+    glBindProgramPipeline;
+    glGenProgramPipelines;
+    glDeleteProgramPipelines;
+
+    glIsProgramPipeline;
+
+    glActiveShaderProgram;
+    glCreateShaderProgramv;
+
+    glValidateProgramPipeline;
+    glGetProgramPipelineInfoLog;
+
+    /* ---- Program Resources ---- */
+
+    glGetProgramInterfaceiv;
+    glGetProgramResourceIndex;
+    glGetProgramResourceName;
+    glGetProgramResourceiv;
+    glGetProgramResourceLocation;
+
+    /* ---- Indirect Draw ---- */
+
+    glDrawArraysIndirect;
+    glDrawElementsIndirect;
+
+    /* ==================================================================== */
+    /* GLES 3.2                                                             */
+    /* ==================================================================== */
+
+    /* ---- Geometry / Tessellation ---- */
+
+    glPrimitiveBoundingBox;
+    glPatchParameteri;
+
+    /* ---- Image Load/Store ---- */
+
+    glBindImageTexture;
+
+    /* ---- Draw Variants ---- */
+
+    glDrawRangeElements;
+
+    glDrawElementsBaseVertex;
+    glDrawElementsInstancedBaseVertex;
+    glDrawRangeElementsBaseVertex;
+
+    /* ---- Texture / Image ---- */
+
+    glTexStorage2DMultisample;
+    glTexStorage3DMultisample;
+
+    /* ---- Shading ---- */
+
+    glMinSampleShading;
+    glBlendBarrier;
+
+    /* ---- Robustness ---- */
+
+    glGetGraphicsResetStatus;
+    glReadnPixels;
+
+    glGetnUniformfv;
+    glGetnUniformiv;
+    glGetnUniformuiv;
+
+    /* ---- Debug ---- */
+
+    glDebugMessageCallback;
+    glDebugMessageControl;
+
+    glDebugMessageInsert;
+    glGetDebugMessageLog;
+
+    glPushDebugGroup;
+    glPopDebugGroup;
+
+    glObjectLabel;
+    glGetObjectLabel;
+
+    glObjectPtrLabel;
+    glGetObjectPtrLabel;
+
+local:
+    *;
+};
