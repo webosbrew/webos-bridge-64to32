@@ -1,7 +1,7 @@
 ## A 64-bit (aarch64) bridge for LG webOS
 
 A custom bridge that allows aarch64 binaries to run on existing LG webOS TVs, while
-still making use of hardware acceleration from the GPU which is still 32-bit.
+still making use of hardware acceleration from the GPU through shared memory.
 
 ### Features:
 
@@ -22,18 +22,24 @@ This IPK is a prerequisite for other aarch64 apps on webOS. Further libraries re
 
 It should be roughly compatible with 2021 (webOS 6) and newer devices. This has been tested on webOS 10 and 11.
 
+### QuickStart:
+
+Download the latest IPK from https://github.com/webosbrew/webos-bridge-64to32/releases and install it.
+
+Run the IPK from the menu, it should produce a rotating cube if successful.
+
+Now install your aarch64 IPK e.g. RetroArch from https://github.com/webosbrew/RetroArch/releases
+
 ---
 
-## Prerequisites
+## Building it
+
+### Prerequisites
 
 In order to build this project you need two things 1) a armv7a compiler and 2) a aarch64 compiler.
 
 These are available from:
 https://github.com/cscd98/buildroot-nc4/releases/
-
-## Building it
-
-### Quickstart
 
 Pass the Makefile CC_32_PATH, CC_64_PATH,
 SYSROOT_64 and SYSROOT_32 that your toolchain uses if required.
@@ -60,7 +66,31 @@ for debugging or as specified in Makefile's PROXY_INSTALL_PATH):
 out/armv7a/gles_proxy
 ```
 
-## Libraries Provided in IPK
+### Using the bridge with your application:
+
+You will need to use patchelf to change the LD intepreter location
+(ld-linux-aarch64.so.1) as well as the rpath of your binary, so it finds the IPK's loader and libs:
+
+```
+patchelf --set-interpreter /media/developer/apps/usr/palm/applications/org.webosbrew.bridge-64to32/lib/ld-linux-aarch64.so.1 ./yourbinary
+patchelf --add-rpath /media/developer/apps/usr/palm/applications/org.webosbrew.bridge-64to32/lib ./yourbinary
+```
+
+Then after you have created the IPK - run the script in this repo:
+
+```
+./scripts/patch-aarch64-in-ipk.sh <name of IPK>
+```
+
+Or alternatively if using: https://github.com/webosbrew/ares-cli-rs
+
+```
+ares-package -A arm <folder> -o .
+```
+
+This will generate a IPK that can be installed via webOS dev manager and appear on the menu.
+
+### Libraries Provided in IPK
 
 Inspired by webOS 11 this IPK supplies the following libraries normally found in webOS 11 - lib64:
 
@@ -91,34 +121,5 @@ However, they are not available from a jailed environment so we also package the
 libmnl.so.0 libmnl.so.0.2.0 libipset.so.13.4.0
 ```
 
-### Note for end users:
-
-End users need to install the bridge IPK available here:
-
-https://github.com/webosbrew/webos-bridge-64to32/releases
-
-Then the corresponding aarch64 IPK for your application.
-
-### Note for developers:
-
-You will need to use patchelf to change the LD intepreter location
-(ld-linux-aarch64.so.1) as well as the rpath of your binary, so it finds the IPK's loader and libs:
-
-```
-patchelf --set-interpreter /media/developer/apps/usr/palm/applications/org.webosbrew.bridge-64to32/lib/ld-linux-aarch64.so.1 ./yourbinary
-patchelf --add-rpath /media/developer/apps/usr/palm/applications/org.webosbrew.bridge-64to32/lib ./yourbinary
-```
-
-Then after you have created the IPK - run the script in this repo:
-
-```
-./scripts/patch-aarch64-in-ipk.sh <name of IPK>
-```
-
-Or alternatively if using: https://github.com/webosbrew/ares-cli-rs
-
-```
-ares-package -A arm <folder> -o .
-```
-
-This will generate a IPK that can be installed via webOS dev manager and appear on the menu.
+It also includes several additional libraries required for running actual aarch64 apps. More can
+suggested / submitted via PR.
