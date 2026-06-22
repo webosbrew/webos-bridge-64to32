@@ -34,6 +34,19 @@ static struct wl_webos_input_manager *proxy_webos_input_manager = NULL;
 static struct wl_display *display_table[EGL_BRIDGE_MAX_DISPLAYS];
 bool demo_surface_consumed = false;
 
+static struct wl_output *proxy_wl_output = NULL;
+
+typedef struct
+{
+  int32_t width, height;  /* current mode, pixels */
+  int32_t refresh;        /* mHz */
+  int32_t phys_w, phys_h; /* physical size, mm */
+  int32_t scale;
+  int received;
+} ProxyOutputInfo;
+
+static ProxyOutputInfo proxy_output_info_store = {0};
+
 typedef struct
 {
   uint32_t id;
@@ -76,6 +89,56 @@ static const struct wl_message _pxy_webos_shell_reqs[] = {
 static const struct wl_interface _pxy_webos_shell_iface = {
     "wl_webos_shell", 2, 2, _pxy_webos_shell_reqs, 0, NULL,
 };
+
+/* ── width/height etc. of real wl ────────────────────────────────────────── */
+static void _pxy_output_geometry(void *data, struct wl_output *wl_output,
+                                 int32_t x, int32_t y, int32_t physical_width,
+                                 int32_t physical_height, int32_t subpixel,
+                                 const char *make, const char *model,
+                                 int32_t transform)
+{
+  (void)wl_output;
+  (void)x;
+  (void)y;
+  (void)subpixel;
+  (void)make;
+  (void)model;
+  (void)transform;
+  ProxyOutputInfo *info = (ProxyOutputInfo *)data;
+  info->phys_w = physical_width;
+  info->phys_h = physical_height;
+}
+
+static void _pxy_output_mode(void *data, struct wl_output *wl_output,
+                             uint32_t flags, int32_t width, int32_t height,
+                             int32_t refresh)
+{
+  (void)wl_output;
+  ProxyOutputInfo *info = (ProxyOutputInfo *)data;
+  if (flags & WL_OUTPUT_MODE_CURRENT)
+  {
+    info->width = width;
+    info->height = height;
+    info->refresh = refresh;
+  }
+}
+
+static void _pxy_output_done(void *data, struct wl_output *wl_output)
+{
+  (void)wl_output;
+  ((ProxyOutputInfo *)data)->received = 1;
+}
+
+static void _pxy_output_scale(void *data, struct wl_output *wl_output,
+                              int32_t factor)
+{
+  (void)wl_output;
+  ((ProxyOutputInfo *)data)->scale = factor;
+}
+
+static const struct wl_output_listener _pxy_output_listener = {
+    _pxy_output_geometry, _pxy_output_mode, _pxy_output_done,
+    _pxy_output_scale};
 
 /* ── Listener for proxy's webOS shell surface ──── */
 
@@ -377,6 +440,19 @@ static void _pxy_reg_add(void *d, struct wl_registry *reg, uint32_t name,
   else if (!strcmp(iface, "wl_webos_shell"))
     proxy_wl_webos_shell =
         wl_registry_bind(reg, name, &_pxy_webos_shell_iface, ver < 2 ? ver : 2);
+  else if (!strcmp(iface, "wl_output"))
+  {
+#ifdef DEBUG_WAYLAND
+    if (proxy_wl_output)
+      log_console(
+          "Warning: multiple wl_output globals, only using the last one");
+#endif
+    proxy_wl_output =
+        wl_registry_bind(reg, name, &wl_output_interface, ver < 2 ? ver : 2);
+    memset(&proxy_output_info_store, 0, sizeof(proxy_output_info_store));
+    wl_output_add_listener(proxy_wl_output, &_pxy_output_listener,
+                           &proxy_output_info_store);
+  }
   else if (!strcmp(iface, "wl_seat"))
   {
 #ifdef DEBUG_WAYLAND
@@ -481,6 +557,10 @@ void proxy_wayland_init(void)
     }
   }
 
+  /* ── Collect real output mode/geometry ── */
+  if (proxy_wl_output)
+    wl_display_roundtrip(proxy_wl_display);
+
   if (!proxy_wl_compositor)
     log_error("proxy_wayland_init: WARNING no wl_compositor");
   if (!proxy_wl_webos_shell)
@@ -523,8 +603,7 @@ void h_wl_display_connect(BridgeCtrl *C, uint8_t *D)
   wl_display_roundtrip(proxy_wl_display);
 
   uint32_t *rb = (uint32_t *)C->result_buf;
-  rb[0] = 0; /* surf_id: no surface yet — created by
-                h_wl_compositor_create_surface */
+  rb[0] = 0;
   rb[1] = 1; /* num_seats   */
   rb[2] = 1; /* num_outputs */
   rb[3] = id_watermark;
@@ -532,9 +611,37 @@ void h_wl_display_connect(BridgeCtrl *C, uint8_t *D)
   rb[5] = proxy_webos_seat_info_store.id;
   rb[6] = proxy_webos_seat_info_store.designator;
   rb[7] = proxy_webos_seat_info_store.capabilities;
-  /* name as string starting at rb[8] */
-  strncpy((char *)&rb[8], proxy_webos_seat_info_store.name,
-          BRIDGE_RESULT_SIZE - 32 - 1);
+
+  rb[8] = (uint32_t)(proxy_output_info_store.width > 0
+                         ? proxy_output_info_store.width
+                         : 1920);
+  rb[9] = (uint32_t)(proxy_output_info_store.height > 0
+                         ? proxy_output_info_store.height
+                         : 1080);
+  rb[10] = (uint32_t)(proxy_output_info_store.refresh > 0
+                          ? proxy_output_info_store.refresh
+                          : 60000);
+  rb[11] = (uint32_t)(proxy_output_info_store.phys_w > 0
+                          ? proxy_output_info_store.phys_w
+                          : 527);
+  rb[12] = (uint32_t)(proxy_output_info_store.phys_h > 0
+                          ? proxy_output_info_store.phys_h
+                          : 296);
+  rb[13] = (uint32_t)(proxy_output_info_store.scale > 0
+                          ? proxy_output_info_store.scale
+                          : 1);
+
+#ifdef DEBUG_WAYLAND
+  log_console(
+      "h_wl_display_connect: proxy_output_info_store.width=%d "
+      "proxy_output_info_store.height=%d proxy_output_info_store.refresh=%d",
+      proxy_output_info_store.width, proxy_output_info_store.height,
+      proxy_output_info_store.refresh);
+#endif
+
+  /* name as string starting at rb[14] */
+  strncpy((char *)&rb[14], proxy_webos_seat_info_store.name,
+          BRIDGE_RESULT_SIZE - 56 - 1);
   uint32_t allocated_slot = alloc_slot();
   display_table[allocated_slot] = proxy_wl_display;
 

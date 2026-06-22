@@ -279,6 +279,13 @@ typedef struct
   uint32_t active_surface_handle; // stub handle of surface that went fullscreen
   uint32_t keyboard_focus_handle; // handle focus was actually sent to
 
+  uint32_t output_width;
+  uint32_t output_height;
+  uint32_t output_refresh;
+  uint32_t output_phys_w;
+  uint32_t output_phys_h;
+  uint32_t output_scale;
+
 } wl_bridge_state_t;
 
 static wl_bridge_state_t g_bs;
@@ -640,8 +647,8 @@ static void _fire_output_events(uint32_t idx)
     typedef void (*geo_fn)(void *, struct wl_output *, int32_t, int32_t,
                            int32_t, int32_t, int32_t, const char *,
                            const char *, int32_t);
-    ((geo_fn)s->funcs[0])(s->data, out, 0, 0, /* x, y */
-                          527, 296,           /* physical mm */
+    ((geo_fn)s->funcs[0])(s->data, out, 0, 0, (int32_t)g_bs.output_phys_w,
+                          (int32_t)g_bs.output_phys_h,
                           WL_OUTPUT_SUBPIXEL_UNKNOWN, "LG", "webOS TV",
                           WL_OUTPUT_TRANSFORM_NORMAL);
   }
@@ -651,14 +658,16 @@ static void _fire_output_events(uint32_t idx)
   {
     typedef void (*mode_fn)(void *, struct wl_output *, uint32_t, int32_t,
                             int32_t, int32_t);
-    ((mode_fn)s->funcs[1])(s->data, out, 3, 1920, 1080, 60000);
+    ((mode_fn)s->funcs[1])(s->data, out, 3, (int32_t)g_bs.output_width,
+                           (int32_t)g_bs.output_height,
+                           (int32_t)g_bs.output_refresh);
   }
 
   /* index 2: scale — SDL2 Wayland uses this to set the DPI/HiDPI factor */
   if (s->funcs[2])
   {
     typedef void (*scale_fn)(void *, struct wl_output *, int32_t);
-    ((scale_fn)s->funcs[2])(s->data, out, 1 /* scale factor 1:1 */);
+    ((scale_fn)s->funcs[2])(s->data, out, (int32_t)g_bs.output_scale);
   }
 
   /* index 3: done — signals SDL2 that all output data has arrived;
@@ -718,8 +727,23 @@ struct wl_display *wl_display_connect(const char *name)
   g_bs.webos_seat_id = rb[5];
   g_bs.webos_seat_designator = rb[6];
   g_bs.webos_seat_capabilities = rb[7];
-  strncpy(g_bs.webos_seat_name, (const char *)&rb[8],
+
+  g_bs.output_width = rb[8];
+  g_bs.output_height = rb[9];
+  g_bs.output_refresh = rb[10];
+  g_bs.output_phys_w = rb[11];
+  g_bs.output_phys_h = rb[12];
+  g_bs.output_scale = rb[13];
+
+#ifdef DEBUG_WAYLAND
+  log_console(
+      "wl_display_connect: output_width=%d output_height=%d output_refresh=%d",
+      g_bs.output_width, g_bs.output_height, g_bs.output_refresh);
+#endif
+
+  strncpy(g_bs.webos_seat_name, (const char *)&rb[14],
           sizeof(g_bs.webos_seat_name) - 1);
+
 #ifdef DEBUG_WAYLAND
   log_console("wl_display_connect: webos_seat received=%u name='%s'",
               g_bs.webos_seat_received, g_bs.webos_seat_name);

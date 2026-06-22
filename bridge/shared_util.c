@@ -77,7 +77,7 @@ void log_error(const char *fmt, ...)
 void log_console_impl(const char *prefix, const char *fmt, ...)
 {
 #if defined(DEBUG) || defined(DEBUG_VERBOSE) || defined(DEBUG_DUMP_SHADERS) || \
-    defined(DEBUG_OPCODES)
+    defined(DEBUG_OPCODES) || defined(DEBUG_WAYLAND)
   char buf[4096];
   int n = 0;
 

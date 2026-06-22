@@ -1212,14 +1212,18 @@ GL_APICALL void GL_APIENTRY glGenRenderbuffers(GLsizei n, GLuint *rbs)
     return;
   }
 
+#ifdef DEBUG
   log_console("[glGenRenderbuffers] BEGIN n=%d rbs=%p", n, rbs);
+#endif
 
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
 
   C->opcode = OP_glGenRenderbuffers;
 
+#ifdef DEBUG
   log_console("[glGenRenderbuffers] opcode=%u", C->opcode);
+#endif
 
   ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
   aw_i32(&W, n);
@@ -1230,18 +1234,22 @@ GL_APICALL void GL_APIENTRY glGenRenderbuffers(GLsizei n, GLuint *rbs)
   C->data_offset = out_off;
   C->data_size = n * sizeof(GLuint);
 
+#ifdef DEBUG
   log_console("[glGenRenderbuffers] "
               "sending call: n=%d args_len=%d data_off=%u size=%u",
               n, C->args_len, C->data_offset, C->data_size);
+#endif
 
   BRIDGE_SEND_CALL();
 
   bridge_data_read(rbs, out_off, n * sizeof(GLuint));
 
+#ifdef DEBUG
   for (int i = 0; i < n; i++)
     log_console("[glGenRenderbuffers] rbs[%d]=%u", i, rbs[i]);
 
   log_console("[glGenRenderbuffers] END");
+#endif
 }
 
 GL_APICALL void GL_APIENTRY glDeleteRenderbuffers(GLsizei n, const GLuint *rbs)
@@ -1268,7 +1276,9 @@ GL_APICALL void GL_APIENTRY glDeleteRenderbuffers(GLsizei n, const GLuint *rbs)
 GL_APICALL void GL_APIENTRY glBindRenderbuffer(GLenum target,
                                                GLuint renderbuffer)
 {
+#ifdef DEBUG
   log_console(" glBindRenderbuffer target=%x rb=%u", target, renderbuffer);
+#endif
 
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
@@ -1283,7 +1293,9 @@ GL_APICALL void GL_APIENTRY glBindRenderbuffer(GLenum target,
 
   BRIDGE_SEND_VOID();
 
+#ifdef DEBUG
   log_console(" glBindRenderbuffer END");
+#endif
 }
 
 GL_APICALL void GL_APIENTRY glRenderbufferStorage(GLenum target,
