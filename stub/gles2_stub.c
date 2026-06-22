@@ -1752,7 +1752,17 @@ GL_APICALL GLint GL_APIENTRY glGetUniformLocation(GLuint program,
 #ifdef CACHE_UNIFORM_ATTRIB_LOCATION
   GLint cached;
   if (loc_cache_lookup(program, name, 0, &cached))
+  {
+#ifdef DEBUG_VERBOSE
+    log_console("glGetUniformLocation - program:%d name:%s (cached)", program,
+                name);
+#endif
     return cached;
+  }
+#endif
+
+#ifdef DEBUG_VERBOSE
+  log_console("glGetUniformLocation - program:%d name:%s", program, name);
 #endif
 
   size_t namelen = strlen(name) + 1;
@@ -1766,7 +1776,12 @@ GL_APICALL GLint GL_APIENTRY glGetUniformLocation(GLuint program,
   C->data_size = (uint32_t)namelen;
   C->data2_offset = 0;
   C->data2_size = 0;
-  return (GLint)BRIDGE_SEND_CALL();
+
+  GLint loc = (GLint)BRIDGE_SEND_CALL();
+#ifdef CACHE_UNIFORM_ATTRIB_LOCATION
+  loc_cache_insert(program, name, 0, loc);
+#endif
+  return loc;
 }
 
 GL_APICALL void GL_APIENTRY glGetActiveUniform(GLuint program, GLuint index,
@@ -1988,7 +2003,17 @@ GL_APICALL GLint GL_APIENTRY glGetAttribLocation(GLuint program,
 #ifdef CACHE_UNIFORM_ATTRIB_LOCATION
   GLint cached;
   if (loc_cache_lookup(program, name, 1, &cached))
+  {
+#ifdef DEBUG_VERBOSE
+    log_console("glGetAttribLocation - program:%d name:%s (cached)", program,
+                name);
+#endif
     return cached;
+  }
+#endif
+
+#ifdef DEBUG_VERBOSE
+  log_console("glGetAttribLocation - program:%d name:%s", program, name);
 #endif
 
   size_t namelen = strlen(name) + 1;
@@ -2002,7 +2027,12 @@ GL_APICALL GLint GL_APIENTRY glGetAttribLocation(GLuint program,
   C->data_size = (uint32_t)namelen;
   C->data2_offset = 0;
   C->data2_size = 0;
-  return (GLint)BRIDGE_SEND_CALL();
+
+  GLint loc = (GLint)BRIDGE_SEND_CALL();
+#ifdef CACHE_UNIFORM_ATTRIB_LOCATION
+  loc_cache_insert(program, name, 1, loc);
+#endif
+  return loc;
 }
 
 GL_APICALL void GL_APIENTRY glGetActiveAttrib(GLuint program, GLuint index,

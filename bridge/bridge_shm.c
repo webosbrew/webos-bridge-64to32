@@ -132,7 +132,8 @@ void shm_destroy(const char *key, BridgeShm *s)
   }
 
 #ifdef DEBUG
-  log_console("shm_destroy: key: %s s->ptr:%p s->shmid:%d", key, s->ptr, s->shmid);
+  log_console("shm_destroy: key: %s s->ptr:%p s->shmid:%d", key, s->ptr,
+              s->shmid);
 #endif
 
   if (s->ptr != NULL)
