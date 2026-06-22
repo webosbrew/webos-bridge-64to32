@@ -2421,7 +2421,34 @@ GL_APICALL void GL_APIENTRY glDrawArrays(GLenum mode, GLint first,
 
   memcpy(C->args + count_pos, &attrib_count, sizeof(uint32_t));
 
+  /* Piggyback the dirty range of any persistently-mapped, unsynchronized
+   * VBO backing an enabled attrib */
+  GLContextState *ctx = &g_stub_ctx[g_stub_current_ctx];
+  VAOState *vao = &ctx->vaos[ctx->current_vao];
+
+  uint32_t piggyback_buffer = 0;
+  uint32_t piggyback_offset = 0;
+  uint32_t piggyback_length = 0;
+  uint32_t piggyback_data_off = stub_vbo_piggyback_range(
+      vao, (GLintptr)first, (GLintptr)first + (GLintptr)count,
+      &piggyback_buffer, &piggyback_offset, &piggyback_length);
+
+  aw_u32(&W, piggyback_buffer);
+  aw_u32(&W, piggyback_offset);
+  aw_u32(&W, piggyback_length);
+
   C->args_len = W.pos;
+
+  if (piggyback_buffer)
+  {
+    C->data2_offset = piggyback_data_off;
+    C->data2_size = piggyback_length;
+  }
+  else
+  {
+    C->data2_offset = 0;
+    C->data2_size = 0;
+  }
 
   BRIDGE_SEND_VOID();
 }
@@ -2440,6 +2467,9 @@ GL_APICALL void GL_APIENTRY glDrawElements(GLenum mode, GLsizei count,
               "g_stub_current_ctx:%d",
               mode, count, type, indices, g_stub_current_ctx);
 #endif
+  GLContextState *ctx = &g_stub_ctx[g_stub_current_ctx];
+  VAOState *vao = &ctx->vaos[ctx->current_vao];
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   C->opcode = OP_glDrawElements;
@@ -2451,45 +2481,99 @@ GL_APICALL void GL_APIENTRY glDrawElements(GLenum mode, GLsizei count,
 
   uint32_t is_client_ptr = 0;
   uintptr_t idx = 0;
+  const uint8_t *index_bytes = NULL;
 
-  GLContextState *ctx = &g_stub_ctx[g_stub_current_ctx];
-  VAOState *vao = &ctx->vaos[ctx->current_vao];
+  uint32_t ebo_piggyback_buffer = 0;
+  uint32_t ebo_piggyback_offset = 0;
+  uint32_t ebo_piggyback_length = 0;
 
   if (vao->ebo != 0)
   {
 #ifdef DEBUG_VERBOSE
     log_console("glDrawElements: ebo mode");
 #endif
-    // VBO case - indices is a byte offset
     is_client_ptr = 0;
     idx = (uintptr_t)indices;
     C->data_offset = 0;
     C->data_size = 0;
+
+    size_t index_size = index_type_size(type);
+    size_t index_bytes_len = (size_t)count * index_size;
+    StubMapEntry *ebo_map = find_stub_map(vao->ebo, GL_ELEMENT_ARRAY_BUFFER);
+
+    if (index_size && ebo_map &&
+        !(ebo_map->access & GL_MAP_FLUSH_EXPLICIT_BIT) &&
+        (ebo_map->access & GL_MAP_WRITE_BIT))
+    {
+      GLintptr index_offset = (GLintptr)(uintptr_t)indices;
+      if (index_offset >= ebo_map->offset &&
+          index_offset + (GLintptr)index_bytes_len <=
+              ebo_map->offset + ebo_map->length)
+      {
+        GLintptr local_off = index_offset - ebo_map->offset;
+        index_bytes = (const uint8_t *)ebo_map->ptr + local_off;
+
+        ebo_piggyback_buffer = vao->ebo;
+        ebo_piggyback_offset = (uint32_t)index_offset;
+        ebo_piggyback_length = (uint32_t)index_bytes_len;
+        C->data_offset = bridge_data_write(index_bytes, index_bytes_len);
+        C->data_size = (uint32_t)index_bytes_len;
+      }
+    }
   }
   else
   {
 #ifdef DEBUG_VERBOSE
     log_console("glDrawElements: alt mode");
 #endif
-    // CLIENT POINTER - must copy into shared memory
     is_client_ptr = 1;
-
     size_t index_size = (type == GL_UNSIGNED_SHORT) ? 2
                         : (type == GL_UNSIGNED_INT) ? 4
                                                     : 1;
-
     size_t bytes = count * index_size;
-
     C->data_offset = bridge_data_write(indices, bytes);
     C->data_size = bytes;
-
-    idx = 0; // ignored on proxy
+    index_bytes = (const uint8_t *)indices;
+    idx = 0;
   }
 
   aw_u64(&W, idx);
   aw_u32(&W, is_client_ptr);
+  aw_u32(&W, ebo_piggyback_buffer);
+  aw_u32(&W, ebo_piggyback_offset);
+  aw_u32(&W, ebo_piggyback_length);
+
+  GLintptr min_vertex = 0, max_vertex = 0;
+  bool have_index_bounds = mapped_index_bounds(index_bytes, count, type, 0,
+                                               &min_vertex, &max_vertex);
+
+  GLintptr first_vertex = have_index_bounds ? min_vertex : 0;
+  GLintptr last_vertex = have_index_bounds ? max_vertex : (GLintptr)count;
+
+  uint32_t piggyback_buffer = 0;
+  uint32_t piggyback_offset = 0;
+  uint32_t piggyback_length = 0;
+  uint32_t piggyback_data_off = stub_vbo_piggyback_range(
+      vao, first_vertex, last_vertex, &piggyback_buffer, &piggyback_offset,
+      &piggyback_length);
+
+  aw_u32(&W, piggyback_buffer);
+  aw_u32(&W, piggyback_offset);
+  aw_u32(&W, piggyback_length);
 
   C->args_len = W.pos;
+
+  if (piggyback_buffer)
+  {
+    C->data2_offset = piggyback_data_off;
+    C->data2_size = piggyback_length;
+  }
+  else
+  {
+    C->data2_offset = 0;
+    C->data2_size = 0;
+  }
+
   BRIDGE_SEND_VOID();
 }
 

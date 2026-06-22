@@ -1665,6 +1665,34 @@ void h_glDrawArrays(BridgeCtrl *C, uint8_t *D)
     vao->attribs[attrib].pointer = (uintptr_t)ptr;
   }
 
+  uint32_t piggyback_buffer = ar_u32(&r);
+  uint32_t piggyback_offset = ar_u32(&r);
+  uint32_t piggyback_length = ar_u32(&r);
+
+  if (piggyback_buffer && C->data2_size > 0)
+  {
+    for (uint32_t mi = 1; mi < MAX_MAPS; mi++)
+    {
+      if (!maps[mi].real_ptr || maps[mi].buffer != piggyback_buffer)
+        continue;
+      if ((GLintptr)piggyback_offset < maps[mi].offset ||
+          (GLintptr)(piggyback_offset + piggyback_length) >
+              maps[mi].offset + maps[mi].length)
+        break;
+
+      uint8_t *dst = (uint8_t *)maps[mi].real_ptr +
+                     ((GLintptr)piggyback_offset - maps[mi].offset);
+      memcpy(dst, dp(C->data2_offset), C->data2_size);
+
+#ifdef DEBUG_VERBOSE
+      log_console("h_glDrawArrays: piggyback wrote %u bytes into VBO=%u map "
+                  "at buffer-offset=%u",
+                  C->data2_size, piggyback_buffer, piggyback_offset);
+#endif
+      break;
+    }
+  }
+
 #ifdef DEBUG_VERBOSE
   GLint fb = 0;
   glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
@@ -1764,7 +1792,6 @@ void h_glDrawArrays(BridgeCtrl *C, uint8_t *D)
 
 void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
 {
-  (void)D;
   AR(r);
 
   GLenum mode = ar_u32(&r);
@@ -1773,6 +1800,14 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
   uintptr_t indices = ar_u64(&r);
   uint32_t is_client_ptr = ar_u32(&r);
 
+  uint32_t ebo_piggyback_buffer = ar_u32(&r);
+  uint32_t ebo_piggyback_offset = ar_u32(&r);
+  uint32_t ebo_piggyback_length = ar_u32(&r);
+
+  uint32_t piggyback_buffer = ar_u32(&r);
+  uint32_t piggyback_offset = ar_u32(&r);
+  uint32_t piggyback_length = ar_u32(&r);
+
 #ifdef DEBUG_VERBOSE
   log_console("h_glDrawElements (tid=%ld) mode=0x%x count=%d type=0x%x idx=%p "
               "is_client_ptr=%d g_current_ctx=%d",
@@ -1780,12 +1815,47 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
               g_current_ctx);
 #endif
 
+  if (ebo_piggyback_buffer && C->data_size > 0)
+  {
+    for (uint32_t mi = 1; mi < MAX_MAPS; mi++)
+    {
+      if (!maps[mi].real_ptr || maps[mi].buffer != ebo_piggyback_buffer)
+        continue;
+      if ((GLintptr)ebo_piggyback_offset < maps[mi].offset ||
+          (GLintptr)(ebo_piggyback_offset + ebo_piggyback_length) >
+              maps[mi].offset + maps[mi].length)
+        break;
+
+      uint8_t *dst = (uint8_t *)maps[mi].real_ptr +
+                     ((GLintptr)ebo_piggyback_offset - maps[mi].offset);
+      memcpy(dst, dp(C->data_offset), C->data_size);
+      break;
+    }
+  }
+
+  if (piggyback_buffer && C->data2_size > 0)
+  {
+    for (uint32_t mi = 1; mi < MAX_MAPS; mi++)
+    {
+      if (!maps[mi].real_ptr || maps[mi].buffer != piggyback_buffer)
+        continue;
+      if ((GLintptr)piggyback_offset < maps[mi].offset ||
+          (GLintptr)(piggyback_offset + piggyback_length) >
+              maps[mi].offset + maps[mi].length)
+        break;
+
+      uint8_t *dst = (uint8_t *)maps[mi].real_ptr +
+                     ((GLintptr)piggyback_offset - maps[mi].offset);
+      memcpy(dst, dp(C->data2_offset), C->data2_size);
+      break;
+    }
+  }
+
   if (!is_client_ptr)
   {
 #ifdef DEBUG_VERBOSE
     log_console("h_glDrawElements: ebo mode");
 #endif
-    // VBO offset
     glDrawElements(mode, count, type, (const void *)indices);
     return;
   }
@@ -1793,9 +1863,11 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
 #ifdef DEBUG_VERBOSE
   log_console("h_glDrawElements: alt mode");
 #endif
-  // Client-side pointer - shared memory
+
   const void *local = dp(C->data_offset);
   glDrawElements(mode, count, type, local);
+
+  (void)D;
 }
 
 /* ── Rasterisation state ─────────────────────────────────────────────────── */

@@ -53,8 +53,11 @@ static BridgeShm wl_data_shm;
 
 /* Performance monitoring */
 #ifdef DEBUG_OPCODES
+#define STATS_WINDOW_SWAPS 10
 static uint64_t g_opcode_count[OP_MAX];
 static uint64_t g_opcode_call_count[OP_MAX];
+static uint64_t g_opcode_count_prev[OP_MAX];
+static uint64_t g_opcode_call_count_prev[OP_MAX];
 static uint64_t g_frame_count = 0;
 #endif
 
@@ -78,6 +81,27 @@ static void dump_opcode_stats(void)
     log_console("  %-32s total=%-8llu calls(blocking)=%llu",
                 opcode_to_string(i), (unsigned long long)g_opcode_count[i],
                 (unsigned long long)g_opcode_call_count[i]);
+  }
+}
+
+static void dump_opcode_stats_window(void)
+{
+  log_always("=== opcode delta, swaps %llu-%llu ===",
+             (unsigned long long)(g_frame_count - STATS_WINDOW_SWAPS + 1),
+             (unsigned long long)g_frame_count);
+
+  for (int i = 1; i < OP_MAX; i++)
+  {
+    uint64_t d_total = g_opcode_count[i] - g_opcode_count_prev[i];
+    uint64_t d_calls = g_opcode_call_count[i] - g_opcode_call_count_prev[i];
+
+    if (d_total)
+      log_always("  %-32s total=%-8llu calls(blocking)=%llu",
+                 opcode_to_string(i), (unsigned long long)d_total,
+                 (unsigned long long)d_calls);
+
+    g_opcode_count_prev[i] = g_opcode_count[i];
+    g_opcode_call_count_prev[i] = g_opcode_call_count[i];
   }
 }
 #endif
@@ -749,8 +773,14 @@ int main(int argc, char **argv)
     if (c->needs_response)
       g_opcode_call_count[opc]++;
 
-    if (opc == OP_eglSwapBuffers && (++g_frame_count % 60) == 0)
-      dump_opcode_stats();
+    if (opc == OP_eglSwapBuffers)
+    {
+      g_frame_count++;
+      if (g_frame_count % STATS_WINDOW_SWAPS == 0)
+        dump_opcode_stats_window();
+      if (g_frame_count % 60 == 0)
+        dump_opcode_stats();
+    }
 #endif
 
 #ifdef DEBUG_BRIDGE_VERBOSE

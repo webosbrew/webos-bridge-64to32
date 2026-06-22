@@ -1,6 +1,8 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include <GLES3/gl32.h>
 
@@ -227,6 +229,202 @@ static inline int is_client_pointer(const void *ptr)
 
   // Otherwise treat as real client pointer
   return 1;
+}
+
+extern uint32_t bridge_data_write(const void *src, size_t size);
+
+static inline size_t index_type_size(GLenum type)
+{
+  switch (type)
+  {
+  case GL_UNSIGNED_BYTE:
+    return 1;
+  case GL_UNSIGNED_SHORT:
+    return 2;
+  case GL_UNSIGNED_INT:
+    return 4;
+  default:
+    return 0;
+  }
+}
+
+static inline size_t attrib_type_size(GLenum type)
+{
+  switch (type)
+  {
+  case GL_BYTE:
+  case GL_UNSIGNED_BYTE:
+    return 1;
+  case GL_SHORT:
+  case GL_UNSIGNED_SHORT:
+  case GL_HALF_FLOAT:
+    return 2;
+  case GL_INT:
+  case GL_UNSIGNED_INT:
+  case GL_FLOAT:
+  case GL_FIXED:
+  case GL_INT_2_10_10_10_REV:
+  case GL_UNSIGNED_INT_2_10_10_10_REV:
+    return 4;
+  default:
+    return 4;
+  }
+}
+
+static inline StubMapEntry *find_stub_map(GLuint buffer, GLenum target)
+{
+  for (uint32_t mi = 1; mi < MAX_MAPS; mi++)
+  {
+    StubMapEntry *m = &stub_maps[mi];
+    if (m->ptr && m->buffer == buffer && m->target == target)
+      return m;
+  }
+  return NULL;
+}
+
+/* Scan index values to find the [min,max] vertex range */
+static inline bool mapped_index_bounds(const uint8_t *idx, GLsizei count,
+                                       GLenum type, GLint basevertex,
+                                       GLintptr *min_vertex,
+                                       GLintptr *max_vertex)
+{
+  if (!idx || count <= 0)
+    return false;
+
+  bool have_index = false;
+  GLintptr min_v = 0;
+  GLintptr max_v = 0;
+
+  for (GLsizei i = 0; i < count; i++)
+  {
+    uint32_t raw = 0;
+
+    switch (type)
+    {
+    case GL_UNSIGNED_BYTE:
+      raw = idx[i];
+      break;
+    case GL_UNSIGNED_SHORT:
+    {
+      uint16_t v;
+      memcpy(&v, idx + (size_t)i * sizeof(v), sizeof(v));
+      raw = v;
+      break;
+    }
+    case GL_UNSIGNED_INT:
+    {
+      uint32_t v;
+      memcpy(&v, idx + (size_t)i * sizeof(v), sizeof(v));
+      raw = v;
+      break;
+    }
+    default:
+      return false;
+    }
+
+    GLintptr vertex = (GLintptr)raw + (GLintptr)basevertex;
+    if (!have_index)
+    {
+      min_v = vertex;
+      max_v = vertex;
+      have_index = true;
+    }
+    else
+    {
+      if (vertex < min_v)
+        min_v = vertex;
+      if (vertex > max_v)
+        max_v = vertex;
+    }
+  }
+
+  if (!have_index || max_v < 0)
+    return false;
+
+  if (min_v < 0)
+    min_v = 0;
+
+  *min_vertex = min_v;
+  *max_vertex = max_v;
+  return true;
+}
+
+/* Shared by glDrawArrays,
+ * glDrawElements, and glDrawElementsBaseVertex. */
+static inline uint32_t
+stub_vbo_piggyback_range(VAOState *vao, GLintptr first_vertex,
+                         GLintptr last_vertex, uint32_t *out_buffer,
+                         uint32_t *out_offset, uint32_t *out_length)
+{
+  *out_buffer = 0;
+  *out_offset = 0;
+  *out_length = 0;
+
+  for (int ai = 0; ai < MAX_VERTEX_ATTRIBS; ai++)
+  {
+    AttribState *a = &vao->attribs[ai];
+    if (!a->enabled || a->vbo == 0)
+      continue;
+
+    for (uint32_t mi = 1; mi < MAX_MAPS; mi++)
+    {
+      StubMapEntry *m = &stub_maps[mi];
+      if (!m->ptr || m->buffer != (GLuint)a->vbo)
+        continue;
+      if (m->access & GL_MAP_FLUSH_EXPLICIT_BIT)
+        break; /* explicit-flush maps handle their own updates */
+      if (!(m->access & GL_MAP_WRITE_BIT))
+        break;
+
+      size_t stride = a->stride ? (size_t)a->stride : 1;
+      GLintptr byte_start =
+          (GLintptr)a->pointer + first_vertex * (GLintptr)stride;
+      GLintptr byte_end =
+          (GLintptr)a->pointer + last_vertex * (GLintptr)stride +
+          (GLintptr)((size_t)a->size * attrib_type_size(a->type));
+
+      for (int aj = 0; aj < MAX_VERTEX_ATTRIBS; aj++)
+      {
+        AttribState *b = &vao->attribs[aj];
+        if (!b->enabled || b->vbo != a->vbo)
+          continue;
+
+        size_t b_stride = b->stride ? (size_t)b->stride : 1;
+        GLintptr b_start =
+            (GLintptr)b->pointer + first_vertex * (GLintptr)b_stride;
+        GLintptr b_end =
+            (GLintptr)b->pointer + last_vertex * (GLintptr)b_stride +
+            (GLintptr)((size_t)b->size * attrib_type_size(b->type));
+
+        if (b_start < byte_start)
+          byte_start = b_start;
+        if (b_end > byte_end)
+          byte_end = b_end;
+      }
+
+      if (byte_start < 0)
+        byte_start = 0;
+      if (byte_end <= byte_start)
+        break;
+
+      if (byte_start < m->offset || byte_end > m->offset + (GLintptr)m->length)
+        break; /* not the buffer this draw actually uses */
+
+      GLintptr local_start = byte_start - m->offset;
+      size_t copy_len = (size_t)(byte_end - byte_start);
+      if ((size_t)local_start >= (size_t)m->length)
+        break;
+      if ((size_t)local_start + copy_len > (size_t)m->length)
+        copy_len = (size_t)m->length - (size_t)local_start;
+
+      *out_buffer = a->vbo;
+      *out_offset = (uint32_t)byte_start;
+      *out_length = (uint32_t)copy_len;
+      return bridge_data_write((uint8_t *)m->ptr + local_start, copy_len);
+    }
+  }
+
+  return 0;
 }
 
 extern void loc_cache_invalidate_program(GLuint program);
