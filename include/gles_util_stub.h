@@ -9,6 +9,12 @@
 #include "gles_util_shared.h"
 
 #define MAX_MAPS 64
+#define MAX_TEXTURE_UNITS 32
+#define BUFRANGE_CACHE_SLOTS 64
+#define SHADOW_TEX_INVALID 0xFFFFFFFFu
+
+extern unsigned int g_stub_current_ctx;
+extern void loc_cache_invalidate_program(GLuint program);
 
 typedef struct
 {
@@ -427,4 +433,222 @@ stub_vbo_piggyback_range(VAOState *vao, GLintptr first_vertex,
   return 0;
 }
 
-extern void loc_cache_invalidate_program(GLuint program);
+extern unsigned int g_stub_current_ctx; /* declared in bridge_core.h */
+
+#define MAX_TEXTURE_UNITS 32
+
+/* ── shadow GL state ──────── */
+typedef struct
+{
+  uint8_t initialised;
+
+  GLenum active_texture;
+  GLuint bound_texture_2d[MAX_TEXTURE_UNITS];
+  GLuint bound_texture_2d_array[MAX_TEXTURE_UNITS];
+  GLuint bound_texture_cube[MAX_TEXTURE_UNITS];
+  GLuint bound_texture_3d[MAX_TEXTURE_UNITS];
+
+  GLuint program;
+  GLuint draw_fb;
+  GLuint read_fb;
+  GLuint vao;
+  GLuint sampler[MAX_TEXTURE_UNITS];
+
+  GLint viewport[4];
+  uint8_t viewport_valid;
+  GLint scissor[4];
+  uint8_t scissor_valid;
+
+  GLboolean color_mask[4];
+  GLfloat depth_range[2];
+  GLenum depth_func;
+  GLboolean depth_mask;
+  GLenum front_face;
+
+  GLenum blend_eq_rgb, blend_eq_alpha;
+  GLenum blend_src_rgb, blend_dst_rgb, blend_src_alpha, blend_dst_alpha;
+
+  GLboolean cap_blend, cap_depth_test, cap_cull_face, cap_scissor_test,
+      cap_stencil_test, cap_dither, cap_polygon_offset_fill,
+      cap_sample_alpha_to_coverage, cap_sample_coverage;
+} StubShadowState;
+
+static StubShadowState g_shadow_ctx[MAX_CONTEXTS];
+
+static inline void shadow_state_init(StubShadowState *s)
+{
+  memset(s, 0, sizeof(*s));
+
+  s->active_texture = GL_TEXTURE0;
+
+  s->color_mask[0] = s->color_mask[1] = s->color_mask[2] = s->color_mask[3] =
+      GL_TRUE;
+  s->depth_range[0] = 0.0f;
+  s->depth_range[1] = 1.0f;
+  s->depth_func = GL_LESS;
+  s->depth_mask = GL_TRUE;
+  s->front_face = GL_CCW;
+
+  s->blend_eq_rgb = s->blend_eq_alpha = GL_FUNC_ADD;
+  s->blend_src_rgb = s->blend_src_alpha = GL_ONE;
+  s->blend_dst_rgb = s->blend_dst_alpha = GL_ZERO;
+
+  s->cap_dither = GL_TRUE; /* the one capability that defaults ON */
+
+  /* viewport/scissor have no fixed default (depend on surface size) —
+     viewport_valid/scissor_valid stay 0, forcing the first real call to
+     always send. */
+
+  s->initialised = 1;
+}
+
+static inline StubShadowState *shadow_state_for_current_ctx(void)
+{
+  StubShadowState *s = &g_shadow_ctx[g_stub_current_ctx];
+  if (!s->initialised)
+    shadow_state_init(s);
+  return s;
+}
+
+static inline GLuint *shadow_tex_slot(StubShadowState *s, GLenum target,
+                                      GLenum unit)
+{
+  uint32_t idx = unit - GL_TEXTURE0;
+  if (idx >= MAX_TEXTURE_UNITS)
+    return NULL;
+  switch (target)
+  {
+  case GL_TEXTURE_2D:
+    return &s->bound_texture_2d[idx];
+  case GL_TEXTURE_2D_ARRAY:
+    return &s->bound_texture_2d_array[idx];
+  case GL_TEXTURE_CUBE_MAP:
+    return &s->bound_texture_cube[idx];
+  case GL_TEXTURE_3D:
+    return &s->bound_texture_3d[idx];
+  default:
+    return NULL; /* unrecognized target — always send */
+  }
+}
+
+static inline GLboolean *shadow_cap_slot(StubShadowState *s, GLenum cap)
+{
+  switch (cap)
+  {
+  case GL_BLEND:
+    return &s->cap_blend;
+  case GL_DEPTH_TEST:
+    return &s->cap_depth_test;
+  case GL_CULL_FACE:
+    return &s->cap_cull_face;
+  case GL_SCISSOR_TEST:
+    return &s->cap_scissor_test;
+  case GL_STENCIL_TEST:
+    return &s->cap_stencil_test;
+  case GL_DITHER:
+    return &s->cap_dither;
+  case GL_POLYGON_OFFSET_FILL:
+    return &s->cap_polygon_offset_fill;
+  case GL_SAMPLE_ALPHA_TO_COVERAGE:
+    return &s->cap_sample_alpha_to_coverage;
+  case GL_SAMPLE_COVERAGE:
+    return &s->cap_sample_coverage;
+  default:
+    return NULL; /* unrecognized — always send */
+  }
+}
+
+/* change detection on small UBO sub-ranges */
+static inline uint32_t fnv1a_hash(const void *data, size_t len)
+{
+  const uint8_t *p = (const uint8_t *)data;
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < len; i++)
+  {
+    h ^= p[i];
+    h *= 16777619u;
+  }
+  return h;
+}
+
+static inline GLuint get_bound_buffer(GLenum target)
+{
+  switch (target)
+  {
+  case GL_ARRAY_BUFFER:
+    return stub_gl_state.array_buffer;
+  case GL_ELEMENT_ARRAY_BUFFER:
+  {
+    GLContextState *ctx = &g_stub_ctx[g_stub_current_ctx];
+    VAOState *vao = &ctx->vaos[ctx->current_vao];
+    return vao->ebo;
+  }
+  case GL_PIXEL_PACK_BUFFER:
+    return stub_gl_state.pixel_pack_buffer;
+  case GL_PIXEL_UNPACK_BUFFER:
+    return stub_gl_state.pixel_unpack_buffer;
+  case GL_UNIFORM_BUFFER:
+    return stub_gl_state.uniform_buffer;
+  case GL_TEXTURE_BUFFER:
+    return stub_gl_state.texture_buffer;
+  case GL_TRANSFORM_FEEDBACK_BUFFER:
+    return stub_gl_state.transform_feedback_buffer;
+  case GL_COPY_READ_BUFFER:
+    return stub_gl_state.copy_read_buffer;
+  case GL_COPY_WRITE_BUFFER:
+    return stub_gl_state.copy_write_buffer;
+  case GL_SHADER_STORAGE_BUFFER:
+    return stub_gl_state.shader_storage_buffer;
+  case GL_ATOMIC_COUNTER_BUFFER:
+    return stub_gl_state.atomic_counter_buffer;
+  case GL_DISPATCH_INDIRECT_BUFFER:
+    return stub_gl_state.dispatch_indirect_buffer;
+  case GL_DRAW_INDIRECT_BUFFER:
+    return stub_gl_state.draw_indirect_buffer;
+  default:
+    return 0;
+  }
+}
+
+/* ── glBindBufferRange fast-path cache ─────────────────────────────────── */
+typedef struct
+{
+  GLuint buffer; /* 0 = empty/invalid */
+  GLintptr offset;
+  GLsizeiptr size;
+  uint32_t content_hash;
+  uint8_t hash_valid;
+} BufferRangeCacheEntry;
+
+static BufferRangeCacheEntry g_bufrange_cache[MAX_CONTEXTS]
+                                             [BUFRANGE_CACHE_SLOTS];
+
+static inline void bufrange_cache_invalidate_buffer(GLuint buffer)
+{
+  for (int c = 0; c < MAX_CONTEXTS; c++)
+    for (int i = 0; i < BUFRANGE_CACHE_SLOTS; i++)
+      if (g_bufrange_cache[c][i].buffer == buffer)
+        g_bufrange_cache[c][i].buffer = 0;
+}
+
+static inline void shadow_invalidate_texture(GLuint texture)
+{
+  if (texture == 0)
+    return; /* name 0 means "unbound" and is never actually deleted */
+
+  for (int c = 0; c < MAX_CONTEXTS; c++)
+  {
+    StubShadowState *s = &g_shadow_ctx[c];
+    for (int u = 0; u < MAX_TEXTURE_UNITS; u++)
+    {
+      if (s->bound_texture_2d[u] == texture)
+        s->bound_texture_2d[u] = SHADOW_TEX_INVALID;
+      if (s->bound_texture_2d_array[u] == texture)
+        s->bound_texture_2d_array[u] = SHADOW_TEX_INVALID;
+      if (s->bound_texture_cube[u] == texture)
+        s->bound_texture_cube[u] = SHADOW_TEX_INVALID;
+      if (s->bound_texture_3d[u] == texture)
+        s->bound_texture_3d[u] = SHADOW_TEX_INVALID;
+    }
+  }
+}

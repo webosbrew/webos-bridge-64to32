@@ -431,10 +431,11 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
 
   if (!real)
   {
-    log_error("h_glMapBufferRange: target=0x%04x buffer=%u offset=%lld "
-              "length=%lld glMapBufferRange returned NULL (gl_err=0x%x)",
-              target, buffer, (long long)offset, (long long)length,
-              glGetError());
+    log_error("h_glMapBufferRange: target=0x%04x offset=%lld "
+              "length=%lld access=0x%04x buffer=%u old_binding=%d "
+              "binding_enum=0x%x glMapBufferRange returned NULL (gl_err=0x%x)",
+              target, (long long)offset, (long long)length, access, buffer,
+              old_binding, binding_enum, glGetError());
     if ((GLuint)old_binding != buffer)
       glBindBuffer(target, old_binding);
     C->result = 0;

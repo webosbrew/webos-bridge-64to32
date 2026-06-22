@@ -79,6 +79,7 @@ endif
 
 # performance enhancements
 CACHE_UNIFORM_ATTRIB_LOCATION ?= 1
+CACHE_GL_STATE ?= 1
 
 # ── Directories ──────────────────────────────────────────────────────────────
 INCLUDE_DIR := include
@@ -216,6 +217,11 @@ endif
 ifeq ($(CACHE_UNIFORM_ATTRIB_LOCATION),1)
   CFLAGS_64_BASE += -DCACHE_UNIFORM_ATTRIB_LOCATION
   CFLAGS_32 += -DCACHE_UNIFORM_ATTRIB_LOCATION
+endif
+
+ifeq ($(CACHE_GL_STATE),1)
+  CFLAGS_64_BASE += -DCACHE_GL_STATE
+  CFLAGS_32 += -DCACHE_GL_STATE
 endif
 
 WAYLAND_XML_64 := $(WAYLAND_PROTOCOLS_64)/webos-shell.xml

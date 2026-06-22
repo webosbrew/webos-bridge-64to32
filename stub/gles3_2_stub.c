@@ -25,43 +25,6 @@ static void setup_scalar(GLBridgeOpcode op)
   C->data2_size = 0;
 }
 
-static GLuint get_bound_buffer(GLenum target)
-{
-  switch (target)
-  {
-  case GL_ARRAY_BUFFER:
-    return stub_gl_state.array_buffer;
-  case GL_ELEMENT_ARRAY_BUFFER:
-    GLContextState *ctx = &g_stub_ctx[g_stub_current_ctx];
-    VAOState *vao = &ctx->vaos[ctx->current_vao];
-    return vao->ebo;
-  case GL_PIXEL_PACK_BUFFER:
-    return stub_gl_state.pixel_pack_buffer;
-  case GL_PIXEL_UNPACK_BUFFER:
-    return stub_gl_state.pixel_unpack_buffer;
-  case GL_UNIFORM_BUFFER:
-    return stub_gl_state.uniform_buffer;
-  case GL_TEXTURE_BUFFER:
-    return stub_gl_state.texture_buffer;
-  case GL_TRANSFORM_FEEDBACK_BUFFER:
-    return stub_gl_state.transform_feedback_buffer;
-  case GL_COPY_READ_BUFFER:
-    return stub_gl_state.copy_read_buffer;
-  case GL_COPY_WRITE_BUFFER:
-    return stub_gl_state.copy_write_buffer;
-  case GL_SHADER_STORAGE_BUFFER:
-    return stub_gl_state.shader_storage_buffer;
-  case GL_ATOMIC_COUNTER_BUFFER:
-    return stub_gl_state.atomic_counter_buffer;
-  case GL_DISPATCH_INDIRECT_BUFFER:
-    return stub_gl_state.dispatch_indirect_buffer;
-  case GL_DRAW_INDIRECT_BUFFER:
-    return stub_gl_state.draw_indirect_buffer;
-  default:
-    return 0;
-  }
-}
-
 /* ───────── VAOs ───────── */
 
 GL_APICALL void GL_APIENTRY glGenVertexArrays(GLsizei n, GLuint *arrays)
@@ -124,6 +87,12 @@ GL_APICALL void GL_APIENTRY glBindVertexArray(GLuint array)
 #ifdef DEBUG_VERBOSE
   log_console("glBindVertexArray: array:%d g_stub_current_ctx:%d", array,
               g_stub_current_ctx);
+#endif
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->vao == array)
+    return;
+  s->vao = array;
 #endif
   g_stub_ctx[g_stub_current_ctx].current_vao = array;
 
@@ -238,6 +207,15 @@ GL_APICALL void GL_APIENTRY glEndQuery(GLenum target)
 
 GL_APICALL void GL_APIENTRY glBindSampler(GLuint unit, GLuint sampler)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (unit < MAX_TEXTURE_UNITS)
+  {
+    if (s->sampler[unit] == sampler)
+      return;
+    s->sampler[unit] = sampler;
+  }
+#endif
   BRIDGE_BEGIN();
 
   BridgeCtrl *C = BRIDGE_CTRL();
@@ -337,7 +315,11 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
   uint32_t map_id = (uint32_t)C->result;
   if (!map_id)
   {
-    log_error("glMapBufferRange: map_id not found: %d", (uint32_t)C->result);
+    log_error("glMapBufferRange: map_id not found - C->result:%d target=0x%04x "
+              "offset=%d length=%d "
+              "access=0x%04x GL_MAP_READ_BIT set=%d buf=%d",
+              (uint32_t)C->result, target, offset, length, access,
+              access & GL_MAP_READ_BIT ? true : false, buf);
     return NULL;
   }
 #ifdef DEBUG_VERBOSE
@@ -1647,6 +1629,55 @@ GL_APICALL void GL_APIENTRY glBindBufferRange(GLenum target, GLuint index,
               (unsigned long long)size, g_stub_current_ctx);
 #endif
 
+#ifdef CACHE_GL_STATE
+  if (target == GL_UNIFORM_BUFFER && index < BUFRANGE_CACHE_SLOTS)
+  {
+    BufferRangeCacheEntry *ce = &g_bufrange_cache[g_stub_current_ctx][index];
+    StubMapEntry *m = find_stub_map(buffer, GL_UNIFORM_BUFFER);
+    bool unsynchronized_mapped = m && (m->access & GL_MAP_WRITE_BIT) &&
+                                 !(m->access & GL_MAP_FLUSH_EXPLICIT_BIT);
+
+    if (ce->buffer == buffer && ce->offset == offset && ce->size == size)
+    {
+      if (!unsynchronized_mapped)
+        return; /* params unchanged, and nothing observable could have
+                    changed the content without invalidating this entry */
+
+      GLintptr local_off = offset - m->offset;
+      if (local_off >= 0 &&
+          (size_t)local_off + (size_t)size <= (size_t)m->length)
+      {
+        uint32_t h =
+            fnv1a_hash((const uint8_t *)m->ptr + local_off, (size_t)size);
+        if (ce->hash_valid && h == ce->content_hash)
+          return; /* content unchanged since last send */
+        ce->content_hash = h;
+        ce->hash_valid = 1;
+      }
+      /* range doesn't fit the map — fall through and send normally */
+    }
+    else
+    {
+      ce->buffer = buffer;
+      ce->offset = offset;
+      ce->size = size;
+      ce->hash_valid = 0;
+
+      if (unsynchronized_mapped)
+      {
+        GLintptr local_off = offset - m->offset;
+        if (local_off >= 0 &&
+            (size_t)local_off + (size_t)size <= (size_t)m->length)
+        {
+          ce->content_hash =
+              fnv1a_hash((const uint8_t *)m->ptr + local_off, (size_t)size);
+          ce->hash_valid = 1;
+        }
+      }
+    }
+  }
+#endif
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glBindBufferRange);
@@ -2186,6 +2217,9 @@ GL_APICALL void GL_APIENTRY glCopyBufferSubData(GLenum readTarget,
                                                 GLintptr writeOffset,
                                                 GLsizeiptr size)
 {
+#ifdef CACHE_GL_STATE
+  bufrange_cache_invalidate_buffer(get_bound_buffer(writeTarget));
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glCopyBufferSubData);
@@ -2520,7 +2554,7 @@ GL_APICALL void GL_APIENTRY glDrawBuffers(GLsizei n, const GLenum *bufs)
 
   C->args_len = W.pos;
 
-  BRIDGE_SEND_CALL();
+  BRIDGE_SEND_VOID();
 }
 
 GL_APICALL void GL_APIENTRY glClearBufferfi(GLenum buffer, GLint drawbuffer,
@@ -2618,7 +2652,7 @@ GL_APICALL void GL_APIENTRY glTexBuffer(GLenum target, GLenum internalformat,
 
   C->args_len = W.pos;
 
-  BRIDGE_SEND_CALL();
+  BRIDGE_SEND_VOID();
 }
 
 GL_APICALL void GL_APIENTRY glGetBufferParameteri64v(GLenum target,
@@ -2842,7 +2876,7 @@ GL_APICALL void GL_APIENTRY glProgramBinary(GLuint program, GLenum binaryFormat,
     C->data_size = 0;
   }
 
-  BRIDGE_SEND_CALL();
+  BRIDGE_SEND_VOID();
 }
 
 GL_APICALL void GL_APIENTRY glProgramParameteri(GLuint program, GLenum pname,
@@ -3285,6 +3319,14 @@ GL_APICALL void GL_APIENTRY glObjectLabel(GLenum identifier, GLuint name,
   log_console("glObjectLabel identifier:%d name: %d length:%d label: %s",
               identifier, name, length, label);
 #endif
+
+#ifndef DEBUG
+  (void)identifier;
+  (void)name;
+  (void)length;
+  (void)label;
+  return;
+#else
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glObjectLabel);
@@ -3310,6 +3352,7 @@ GL_APICALL void GL_APIENTRY glObjectLabel(GLenum identifier, GLuint name,
   }
 
   BRIDGE_SEND_CALL();
+#endif
 }
 
 GL_APICALL void GL_APIENTRY glPushDebugGroup(GLenum source, GLuint id,
@@ -3384,7 +3427,7 @@ glCopyImageSubData(GLuint srcName, GLenum srcTarget, GLint srcLevel, GLint srcX,
 
   C->args_len = W.pos;
 
-  BRIDGE_SEND_CALL();
+  BRIDGE_SEND_VOID();
 }
 
 GL_APICALL void GL_APIENTRY glMemoryBarrier(GLbitfield barriers)
@@ -3397,7 +3440,7 @@ GL_APICALL void GL_APIENTRY glMemoryBarrier(GLbitfield barriers)
   aw_u32(&W, barriers);
   C->args_len = W.pos;
 
-  BRIDGE_SEND_CALL();
+  BRIDGE_SEND_VOID();
 }
 
 GL_APICALL void GL_APIENTRY glDispatchCompute(GLuint num_groups_x,

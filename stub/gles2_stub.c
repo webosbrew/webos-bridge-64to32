@@ -127,6 +127,12 @@ void loc_cache_invalidate_program(GLuint program)
 
 GL_APICALL void GL_APIENTRY glActiveTexture(GLenum texture)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->active_texture == texture)
+    return;
+  s->active_texture = texture;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glActiveTexture);
@@ -138,6 +144,17 @@ GL_APICALL void GL_APIENTRY glActiveTexture(GLenum texture)
 
 GL_APICALL void GL_APIENTRY glBindTexture(GLenum target, GLuint texture)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  GLuint *slot = shadow_tex_slot(s, target, s->active_texture);
+  if (slot)
+  {
+    if (*slot == texture)
+      return;
+    *slot = texture;
+  }
+#endif
+
 #ifdef DEBUG_VERBOSE
   log_console("glBindTexture: target=%d tex=%u g_stub_current_ctx=%d", target,
               texture, g_stub_current_ctx);
@@ -176,6 +193,11 @@ GL_APICALL void GL_APIENTRY glGenTextures(GLsizei n, GLuint *textures)
 
 GL_APICALL void GL_APIENTRY glDeleteTextures(GLsizei n, const GLuint *textures)
 {
+#ifdef CACHE_GL_STATE
+  for (GLsizei i = 0; i < n; i++)
+    shadow_invalidate_texture(textures[i]);
+#endif
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   C->opcode = OP_glDeleteTextures;
@@ -724,6 +746,11 @@ GL_APICALL void GL_APIENTRY glGenBuffers(GLsizei n, GLuint *buffers)
 
 GL_APICALL void GL_APIENTRY glDeleteBuffers(GLsizei n, const GLuint *buffers)
 {
+#ifdef CACHE_GL_STATE
+  for (GLsizei i = 0; i < n; i++)
+    bufrange_cache_invalidate_buffer(buffers[i]);
+#endif
+
 #ifdef DEBUG_VERBOSE
   log_console("[glDeleteBuffers] n=%d", n);
 #endif
@@ -784,59 +811,74 @@ GL_APICALL void GL_APIENTRY glBindBuffer(GLenum target, GLuint buffer)
   switch (target)
   {
   case GL_ARRAY_BUFFER:
+    if (stub_gl_state.array_buffer == buffer)
+      return;
     stub_gl_state.array_buffer = buffer;
     break;
-
   case GL_ELEMENT_ARRAY_BUFFER:
+  {
     GLContextState *ctx = &g_stub_ctx[g_stub_current_ctx];
     VAOState *vao = &ctx->vaos[ctx->current_vao];
+    if (vao->ebo == buffer)
+      return;
     vao->ebo = buffer;
     break;
-
+  }
   case GL_PIXEL_PACK_BUFFER:
+    if (stub_gl_state.pixel_pack_buffer == buffer)
+      return;
     stub_gl_state.pixel_pack_buffer = buffer;
     break;
-
   case GL_PIXEL_UNPACK_BUFFER:
+    if (stub_gl_state.pixel_unpack_buffer == buffer)
+      return;
     stub_gl_state.pixel_unpack_buffer = buffer;
     break;
-
   case GL_UNIFORM_BUFFER:
+    if (stub_gl_state.uniform_buffer == buffer)
+      return;
     stub_gl_state.uniform_buffer = buffer;
     break;
-
   case GL_TEXTURE_BUFFER:
+    if (stub_gl_state.texture_buffer == buffer)
+      return;
     stub_gl_state.texture_buffer = buffer;
     break;
-
   case GL_TRANSFORM_FEEDBACK_BUFFER:
+    if (stub_gl_state.transform_feedback_buffer == buffer)
+      return;
     stub_gl_state.transform_feedback_buffer = buffer;
     break;
-
   case GL_COPY_READ_BUFFER:
+    if (stub_gl_state.copy_read_buffer == buffer)
+      return;
     stub_gl_state.copy_read_buffer = buffer;
     break;
-
   case GL_COPY_WRITE_BUFFER:
+    if (stub_gl_state.copy_write_buffer == buffer)
+      return;
     stub_gl_state.copy_write_buffer = buffer;
     break;
-
   case GL_SHADER_STORAGE_BUFFER:
+    if (stub_gl_state.shader_storage_buffer == buffer)
+      return;
     stub_gl_state.shader_storage_buffer = buffer;
     break;
-
   case GL_ATOMIC_COUNTER_BUFFER:
+    if (stub_gl_state.atomic_counter_buffer == buffer)
+      return;
     stub_gl_state.atomic_counter_buffer = buffer;
     break;
-
   case GL_DISPATCH_INDIRECT_BUFFER:
+    if (stub_gl_state.dispatch_indirect_buffer == buffer)
+      return;
     stub_gl_state.dispatch_indirect_buffer = buffer;
     break;
-
   case GL_DRAW_INDIRECT_BUFFER:
+    if (stub_gl_state.draw_indirect_buffer == buffer)
+      return;
     stub_gl_state.draw_indirect_buffer = buffer;
     break;
-
   default:
 #ifdef DEBUG_VERBOSE
     log_console("glBindBuffer: unhandled target=0x%04x buffer=%u", target,
@@ -858,6 +900,10 @@ GL_APICALL void GL_APIENTRY glBindBuffer(GLenum target, GLuint buffer)
 GL_APICALL void GL_APIENTRY glBufferData(GLenum target, GLsizeiptr size,
                                          const void *data, GLenum usage)
 {
+#ifdef CACHE_GL_STATE
+  bufrange_cache_invalidate_buffer(get_bound_buffer(target));
+#endif
+
 #ifdef DEBUG_VERBOSE
   log_console("glBufferData: target:%d size:%d data:%p usage:%d", target, size,
               data, usage);
@@ -889,6 +935,10 @@ GL_APICALL void GL_APIENTRY glBufferData(GLenum target, GLsizeiptr size,
 GL_APICALL void GL_APIENTRY glBufferSubData(GLenum target, GLintptr offset,
                                             GLsizeiptr size, const void *data)
 {
+#ifdef CACHE_GL_STATE
+  bufrange_cache_invalidate_buffer(get_bound_buffer(target));
+#endif
+
 #ifdef DEBUG_VERBOSE
   log_console("glBufferSubData: target:%d offset:%d size:%d data:%p", target,
               offset, size, data);
@@ -1008,6 +1058,33 @@ GL_APICALL void GL_APIENTRY glDeleteFramebuffers(GLsizei n, const GLuint *fbs)
 
 GL_APICALL void GL_APIENTRY glBindFramebuffer(GLenum target, GLuint framebuffer)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+
+  if (target == GL_FRAMEBUFFER)
+  {
+    if (s->draw_fb == framebuffer && s->read_fb == framebuffer)
+      return;
+    s->draw_fb = s->read_fb = framebuffer;
+  }
+#ifdef GL_DRAW_FRAMEBUFFER
+  else if (target == GL_DRAW_FRAMEBUFFER)
+  {
+    if (s->draw_fb == framebuffer)
+      return;
+    s->draw_fb = framebuffer;
+  }
+#endif
+#ifdef GL_READ_FRAMEBUFFER
+  else if (target == GL_READ_FRAMEBUFFER)
+  {
+    if (s->read_fb == framebuffer)
+      return;
+    s->read_fb = framebuffer;
+  }
+#endif
+#endif
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glBindFramebuffer);
@@ -1628,6 +1705,12 @@ GL_APICALL void GL_APIENTRY glLinkProgram(GLuint program)
 
 GL_APICALL void GL_APIENTRY glUseProgram(GLuint program)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->program == program)
+    return;
+  s->program = program;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glUseProgram);
@@ -2586,6 +2669,19 @@ GL_APICALL void GL_APIENTRY glViewport(GLint x, GLint y, GLsizei w, GLsizei h)
 #ifdef DEBUG_VERBOSE
   log_console("glViewport - x: %d y: %d w: %d h: %d", x, y, w, h);
 #endif
+
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->viewport_valid && s->viewport[0] == x && s->viewport[1] == y &&
+      s->viewport[2] == w && s->viewport[3] == h)
+    return;
+  s->viewport[0] = x;
+  s->viewport[1] = y;
+  s->viewport[2] = w;
+  s->viewport[3] = h;
+  s->viewport_valid = 1;
+#endif
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glViewport);
@@ -2601,6 +2697,17 @@ GL_APICALL void GL_APIENTRY glViewport(GLint x, GLint y, GLsizei w, GLsizei h)
 GL_APICALL void GL_APIENTRY glScissor(GLint x, GLint y, GLsizei width,
                                       GLsizei height)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->scissor_valid && s->scissor[0] == x && s->scissor[1] == y &&
+      s->scissor[2] == width && s->scissor[3] == height)
+    return;
+  s->scissor[0] = x;
+  s->scissor[1] = y;
+  s->scissor[2] = width;
+  s->scissor[3] = height;
+  s->scissor_valid = 1;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glScissor);
@@ -2615,6 +2722,16 @@ GL_APICALL void GL_APIENTRY glScissor(GLint x, GLint y, GLsizei width,
 
 GL_APICALL void GL_APIENTRY glEnable(GLenum cap)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  GLboolean *slot = shadow_cap_slot(s, cap);
+  if (slot)
+  {
+    if (*slot == GL_TRUE)
+      return;
+    *slot = GL_TRUE;
+  }
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glEnable);
@@ -2626,6 +2743,16 @@ GL_APICALL void GL_APIENTRY glEnable(GLenum cap)
 
 GL_APICALL void GL_APIENTRY glDisable(GLenum cap)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  GLboolean *slot = shadow_cap_slot(s, cap);
+  if (slot)
+  {
+    if (*slot == GL_FALSE)
+      return;
+    *slot = GL_FALSE;
+  }
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glDisable);
@@ -2659,6 +2786,12 @@ GL_APICALL void GL_APIENTRY glCullFace(GLenum mode)
 
 GL_APICALL void GL_APIENTRY glFrontFace(GLenum mode)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->front_face == mode)
+    return;
+  s->front_face = mode;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glFrontFace);
@@ -2737,6 +2870,12 @@ GL_APICALL void GL_APIENTRY glBlendColor(GLfloat r, GLfloat g, GLfloat b,
 
 GL_APICALL void GL_APIENTRY glBlendEquation(GLenum mode)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->blend_eq_rgb == mode && s->blend_eq_alpha == mode)
+    return;
+  s->blend_eq_rgb = s->blend_eq_alpha = mode;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glBlendEquation);
@@ -2749,6 +2888,13 @@ GL_APICALL void GL_APIENTRY glBlendEquation(GLenum mode)
 GL_APICALL void GL_APIENTRY glBlendEquationSeparate(GLenum modeRGB,
                                                     GLenum modeAlpha)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->blend_eq_rgb == modeRGB && s->blend_eq_alpha == modeAlpha)
+    return;
+  s->blend_eq_rgb = modeRGB;
+  s->blend_eq_alpha = modeAlpha;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glBlendEquationSeparate);
@@ -2761,6 +2907,14 @@ GL_APICALL void GL_APIENTRY glBlendEquationSeparate(GLenum modeRGB,
 
 GL_APICALL void GL_APIENTRY glBlendFunc(GLenum sfactor, GLenum dfactor)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->blend_src_rgb == sfactor && s->blend_dst_rgb == dfactor &&
+      s->blend_src_alpha == sfactor && s->blend_dst_alpha == dfactor)
+    return;
+  s->blend_src_rgb = s->blend_src_alpha = sfactor;
+  s->blend_dst_rgb = s->blend_dst_alpha = dfactor;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glBlendFunc);
@@ -2775,6 +2929,16 @@ GL_APICALL void GL_APIENTRY glBlendFuncSeparate(GLenum srcRGB, GLenum dstRGB,
                                                 GLenum srcAlpha,
                                                 GLenum dstAlpha)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->blend_src_rgb == srcRGB && s->blend_dst_rgb == dstRGB &&
+      s->blend_src_alpha == srcAlpha && s->blend_dst_alpha == dstAlpha)
+    return;
+  s->blend_src_rgb = srcRGB;
+  s->blend_dst_rgb = dstRGB;
+  s->blend_src_alpha = srcAlpha;
+  s->blend_dst_alpha = dstAlpha;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glBlendFuncSeparate);
@@ -2789,6 +2953,12 @@ GL_APICALL void GL_APIENTRY glBlendFuncSeparate(GLenum srcRGB, GLenum dstRGB,
 
 GL_APICALL void GL_APIENTRY glDepthFunc(GLenum func)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->depth_func == func)
+    return;
+  s->depth_func = func;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glDepthFunc);
@@ -2800,6 +2970,12 @@ GL_APICALL void GL_APIENTRY glDepthFunc(GLenum func)
 
 GL_APICALL void GL_APIENTRY glDepthMask(GLboolean flag)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->depth_mask == flag)
+    return;
+  s->depth_mask = flag;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glDepthMask);
@@ -2811,6 +2987,13 @@ GL_APICALL void GL_APIENTRY glDepthMask(GLboolean flag)
 
 GL_APICALL void GL_APIENTRY glDepthRangef(GLfloat n, GLfloat f)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->depth_range[0] == n && s->depth_range[1] == f)
+    return;
+  s->depth_range[0] = n;
+  s->depth_range[1] = f;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glDepthRangef);
@@ -2824,6 +3007,16 @@ GL_APICALL void GL_APIENTRY glDepthRangef(GLfloat n, GLfloat f)
 GL_APICALL void GL_APIENTRY glColorMask(GLboolean r, GLboolean g, GLboolean b,
                                         GLboolean a)
 {
+#ifdef CACHE_GL_STATE
+  StubShadowState *s = shadow_state_for_current_ctx();
+  if (s->color_mask[0] == r && s->color_mask[1] == g && s->color_mask[2] == b &&
+      s->color_mask[3] == a)
+    return;
+  s->color_mask[0] = r;
+  s->color_mask[1] = g;
+  s->color_mask[2] = b;
+  s->color_mask[3] = a;
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glColorMask);

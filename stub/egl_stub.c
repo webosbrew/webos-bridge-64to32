@@ -764,24 +764,50 @@ EGLAPI EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay display,
                                              EGLSurface draw, EGLSurface read,
                                              EGLContext context)
 {
-#ifdef DEBUG_VERBOSE
-  log_console("eglMakeCurrent display=%p draw=%p read=%p ctx=%p setting "
-              "g_stub_current_ctx=%d",
-              display, draw, read, context, H2I(context));
-#endif
+  static uint32_t last_display = 0xFFFFFFFFu;
+  static uint32_t last_draw = 0xFFFFFFFFu;
+  static uint32_t last_read = 0xFFFFFFFFu;
+  static uint32_t last_context = 0xFFFFFFFFu;
+  static int have_last = 0;
+
+  uint32_t d = H2I(display);
+  uint32_t dr = H2I(draw);
+  uint32_t rd = H2I(read);
+  uint32_t ctx = H2I(context);
+
+  if (have_last && last_display == d && last_draw == dr && last_read == rd &&
+      last_context == ctx)
+  {
+    g_stub_current_ctx = ctx;
+    return EGL_TRUE;
+  }
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_egl(OP_eglMakeCurrent);
   ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
-  aw_u32(&W, H2I(display));
-  aw_u32(&W, H2I(draw));
-  aw_u32(&W, H2I(read));
-  aw_u32(&W, H2I(context));
+  aw_u32(&W, d);
+  aw_u32(&W, dr);
+  aw_u32(&W, rd);
+  aw_u32(&W, ctx);
   C->args_len = W.pos;
 
-  g_stub_current_ctx = H2I(context);
+  g_stub_current_ctx = ctx;
 
-  return (EGLBoolean)BRIDGE_SEND_CALL();
+  EGLBoolean ok = (EGLBoolean)BRIDGE_SEND_CALL();
+
+  if (ok)
+  {
+    last_display = d;
+    last_draw = dr;
+    last_read = rd;
+    last_context = ctx;
+    have_last = 1;
+  }
+  else
+    have_last = 0; /* failed — don't trust cached state */
+
+  return ok;
 }
 
 EGLAPI EGLContext EGLAPIENTRY eglGetCurrentContext(void)
