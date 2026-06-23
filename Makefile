@@ -135,8 +135,8 @@ ifeq ($(DEBUG),1)
   LDFLAGS_32 += -g
   LDFLAGS_64_BASE += -g
 else
-  CFLAGS_64_BASE += -O3
-  CFLAGS_32      += -O3
+  CFLAGS_64_BASE += -O2
+  CFLAGS_32      += -O2
 endif
 
 ifeq ($(DEBUG_TO_LOGFILE),1)
