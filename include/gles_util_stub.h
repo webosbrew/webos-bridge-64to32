@@ -473,7 +473,20 @@ typedef struct
       cap_sample_alpha_to_coverage, cap_sample_coverage;
 } StubShadowState;
 
-static StubShadowState g_shadow_ctx[MAX_CONTEXTS];
+extern StubShadowState g_shadow_ctx[MAX_CONTEXTS];
+extern unsigned int g_stub_new_ctx;
+
+typedef struct
+{
+  GLuint buffer; /* 0 = empty/invalid */
+  GLintptr offset;
+  GLsizeiptr size;
+  uint32_t content_hash;
+  uint8_t hash_valid;
+} BufferRangeCacheEntry;
+
+extern BufferRangeCacheEntry g_bufrange_cache[MAX_CONTEXTS]
+                                             [BUFRANGE_CACHE_SLOTS];
 
 static inline void shadow_state_init(StubShadowState *s)
 {
@@ -502,8 +515,31 @@ static inline void shadow_state_init(StubShadowState *s)
   s->initialised = 1;
 }
 
+// reset shadow state on eglCreateContext
+static inline void stub_context_state_reset(unsigned int idx)
+{
+  if (idx >= MAX_CONTEXTS)
+  {
+    log_error("stub_context_state_reset - idx:%d > MAX_CONTEXTS", idx);
+    return;
+  }
+
+  memset(&g_shadow_ctx[idx], 0, sizeof(g_shadow_ctx[idx]));
+
+  memset(&g_stub_ctx[idx], 0, sizeof(g_stub_ctx[idx]));
+
+  for (int i = 0; i < BUFRANGE_CACHE_SLOTS; i++)
+    g_bufrange_cache[idx][i].buffer = 0;
+}
+
 static inline StubShadowState *shadow_state_for_current_ctx(void)
 {
+  if (g_stub_new_ctx > 0)
+  {
+    stub_context_state_reset(g_stub_new_ctx);
+    g_stub_new_ctx = 0;
+  }
+
   StubShadowState *s = &g_shadow_ctx[g_stub_current_ctx];
   if (!s->initialised)
     shadow_state_init(s);
@@ -611,18 +647,6 @@ static inline GLuint get_bound_buffer(GLenum target)
 }
 
 /* ── glBindBufferRange fast-path cache ─────────────────────────────────── */
-typedef struct
-{
-  GLuint buffer; /* 0 = empty/invalid */
-  GLintptr offset;
-  GLsizeiptr size;
-  uint32_t content_hash;
-  uint8_t hash_valid;
-} BufferRangeCacheEntry;
-
-static BufferRangeCacheEntry g_bufrange_cache[MAX_CONTEXTS]
-                                             [BUFRANGE_CACHE_SLOTS];
-
 static inline void bufrange_cache_invalidate_buffer(GLuint buffer)
 {
   for (int c = 0; c < MAX_CONTEXTS; c++)
@@ -650,5 +674,81 @@ static inline void shadow_invalidate_texture(GLuint texture)
       if (s->bound_texture_3d[u] == texture)
         s->bound_texture_3d[u] = SHADOW_TEX_INVALID;
     }
+  }
+}
+
+/* ── Buffer-deletion invalidation ────────────────────────────────────── */
+static inline void stub_gl_state_invalidate_buffer(GLuint buffer)
+{
+  if (buffer == 0)
+    return; /* name 0 ("unbound") is never actually deleted */
+
+  if (stub_gl_state.array_buffer == buffer)
+    stub_gl_state.array_buffer = 0;
+  if (stub_gl_state.pixel_pack_buffer == buffer)
+    stub_gl_state.pixel_pack_buffer = 0;
+  if (stub_gl_state.pixel_unpack_buffer == buffer)
+    stub_gl_state.pixel_unpack_buffer = 0;
+  if (stub_gl_state.uniform_buffer == buffer)
+    stub_gl_state.uniform_buffer = 0;
+  if (stub_gl_state.texture_buffer == buffer)
+    stub_gl_state.texture_buffer = 0;
+  if (stub_gl_state.transform_feedback_buffer == buffer)
+    stub_gl_state.transform_feedback_buffer = 0;
+  if (stub_gl_state.copy_read_buffer == buffer)
+    stub_gl_state.copy_read_buffer = 0;
+  if (stub_gl_state.copy_write_buffer == buffer)
+    stub_gl_state.copy_write_buffer = 0;
+  if (stub_gl_state.shader_storage_buffer == buffer)
+    stub_gl_state.shader_storage_buffer = 0;
+  if (stub_gl_state.atomic_counter_buffer == buffer)
+    stub_gl_state.atomic_counter_buffer = 0;
+  if (stub_gl_state.dispatch_indirect_buffer == buffer)
+    stub_gl_state.dispatch_indirect_buffer = 0;
+  if (stub_gl_state.draw_indirect_buffer == buffer)
+    stub_gl_state.draw_indirect_buffer = 0;
+
+  /* GL_ELEMENT_ARRAY_BUFFER binding lives per-VAO, per-context */
+  for (int c = 0; c < MAX_CONTEXTS; c++)
+    for (int v = 0; v < MAX_VAOS; v++)
+      if (g_stub_ctx[c].vaos[v].ebo == buffer)
+        g_stub_ctx[c].vaos[v].ebo = 0;
+
+  bufrange_cache_invalidate_buffer(buffer);
+}
+
+static inline void shadow_invalidate_fbo(GLuint fbo)
+{
+  if (fbo == 0)
+    return;
+  for (int c = 0; c < MAX_CONTEXTS; c++)
+  {
+    StubShadowState *s = &g_shadow_ctx[c];
+    if (s->draw_fb == fbo)
+      s->draw_fb = 0;
+    if (s->read_fb == fbo)
+      s->read_fb = 0;
+  }
+}
+
+static inline void shadow_invalidate_vao(GLuint vao)
+{
+  if (vao == 0)
+    return;
+  for (int c = 0; c < MAX_CONTEXTS; c++)
+    if (g_shadow_ctx[c].vao == vao)
+      g_shadow_ctx[c].vao = 0;
+}
+
+static inline void shadow_invalidate_sampler(GLuint sampler)
+{
+  if (sampler == 0)
+    return;
+  for (int c = 0; c < MAX_CONTEXTS; c++)
+  {
+    StubShadowState *s = &g_shadow_ctx[c];
+    for (int u = 0; u < MAX_TEXTURE_UNITS; u++)
+      if (s->sampler[u] == sampler)
+        s->sampler[u] = 0;
   }
 }

@@ -35,6 +35,7 @@
 #include "../bridge/shared_util.h"
 #include "bridge_core.h"
 #include "gles_bridge_protocol.h"
+#include "gles_util_stub.h"
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -740,6 +741,12 @@ EGLAPI EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy, EGLConfig config,
 #endif
 
   EGLContext ctx = I2H(EGLContext, raw);
+
+#ifdef CACHE_GL_STATE
+  if (raw != 0)
+    g_stub_new_ctx = raw;
+  // stub_context_state_reset((unsigned int)raw);
+#endif
 
 #ifdef DEBUG
   log_console("eglCreateContext: returning EGLContext=%p", ctx);

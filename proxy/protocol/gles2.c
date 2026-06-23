@@ -389,8 +389,11 @@ void h_glDeleteBuffers(BridgeCtrl *C, uint8_t *D)
 
   AR(r);
   GLsizei n = ar_i32(&r);
-
   GLuint *buffers = (GLuint *)dp(C->data_offset);
+
+#ifdef DEBUG_VERBOSE
+  log_console("h_glDeleteBuffers: n:%d buffers:%p", n, buffers);
+#endif
 
 #ifdef DEBUG_VERBOSE
   for (int i = 0; i < n; i++)

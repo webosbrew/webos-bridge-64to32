@@ -34,6 +34,8 @@ GLState stub_gl_state;
 
 AttribState g_attrib_stub_state[MAX_VERTEX_ATTRIBS];
 GLContextState g_stub_ctx[MAX_CONTEXTS];
+BufferRangeCacheEntry g_bufrange_cache[MAX_CONTEXTS][BUFRANGE_CACHE_SLOTS];
+StubShadowState g_shadow_ctx[MAX_CONTEXTS];
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 static void setup_scalar(GLBridgeOpcode op)
@@ -748,7 +750,7 @@ GL_APICALL void GL_APIENTRY glDeleteBuffers(GLsizei n, const GLuint *buffers)
 {
 #ifdef CACHE_GL_STATE
   for (GLsizei i = 0; i < n; i++)
-    bufrange_cache_invalidate_buffer(buffers[i]);
+    stub_gl_state_invalidate_buffer(buffers[i]);
 #endif
 
 #ifdef DEBUG_VERBOSE
@@ -1036,6 +1038,11 @@ GL_APICALL void GL_APIENTRY glDeleteFramebuffers(GLsizei n, const GLuint *fbs)
 {
 #ifdef DEBUG_VERBOSE
   log_console("[glDeleteFramebuffers] n=%d", n);
+#endif
+
+#ifdef CACHE_GL_STATE
+  for (GLsizei i = 0; i < n; i++)
+    shadow_invalidate_fbo(fbs[i]);
 #endif
 
   BRIDGE_BEGIN();

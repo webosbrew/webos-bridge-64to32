@@ -63,7 +63,9 @@ static int req_wl_efd = -1;
 static int resp_wl_efd = -1;
 static WLBridge g_wl;
 
+/* ── libEGL needs to notify libGLES of a change in context ─────────── */
 unsigned int g_stub_current_ctx;
+unsigned int g_stub_new_ctx = 0;
 
 /* ── Ring state (stub/producer side) ─────────────────────────────────── */
 static BridgeRing *g_ring = NULL;

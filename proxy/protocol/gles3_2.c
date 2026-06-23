@@ -57,6 +57,16 @@ static uint32_t alloc_map(void *real, uint32_t shm_offset, GLsizeiptr length,
     }
   }
 
+#ifdef DEBUG_VERBOSE
+  for (uint32_t i = 1; i < MAX_MAPS; i++)
+  {
+    log_error("alloc_map dump: i:%d real_ptr=%p shm_offet=%d buffer=%u "
+              "target=0x%04x length=%lld access=0x%04x",
+              i, maps[i].real_ptr, maps[i].shm_offset, maps[i].buffer,
+              maps[i].target, (long long)maps[i].length, maps[i].access);
+  }
+#endif
+
   return 0;
 }
 
@@ -459,7 +469,33 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
   C->data_offset = 0;
   C->data_size = length;
 
-  uint32_t idx = alloc_map(real, 0, length, target, buffer, access);
+  uint32_t idx = 0;
+  for (uint32_t i = 1; i < MAX_MAPS; ++i)
+  {
+    if (maps[i].real_ptr && maps[i].buffer == buffer &&
+        maps[i].target == target)
+    {
+      idx = i; // reuse existing slot
+      break;
+    }
+  }
+
+  if (!idx)
+    idx = alloc_map(real, 0, length, target, buffer, access);
+  else
+  {
+    // update length/offset/access
+    maps[idx].real_ptr = real;
+    maps[idx].length = length;
+    maps[idx].offset = 0;
+    maps[idx].access = access;
+  }
+
+  if (!idx)
+    log_error("h_glMapBufferRange: alloc_map failed for buffer=%u "
+              "target=0x%04x length=%lld access=0x%04x",
+              buffer, target, (long long)length, access);
+
   if (idx && idx < MAX_MAPS)
     maps[idx].offset = offset;
 
@@ -542,6 +578,10 @@ void h_glUnmapBuffer(BridgeCtrl *C, uint8_t *D)
 #endif
   if (id && id < MAX_MAPS)
   {
+#ifdef DEBUG_VERBOSE
+    log_console("h_glUnmapBuffer: clearing map:%d mapped buffer=%d", id,
+                maps[id].buffer);
+#endif
     maps[id].real_ptr = NULL;
     maps[id].length = 0;
     maps[id].target = 0;

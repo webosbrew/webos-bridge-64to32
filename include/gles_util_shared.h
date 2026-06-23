@@ -29,7 +29,7 @@
   } while (0)
 #endif
 
-#define MAX_CONTEXTS 4
+#define MAX_CONTEXTS 8
 #define MAX_VAOS 1024
 #define MAX_VERTEX_ATTRIBS 16
 

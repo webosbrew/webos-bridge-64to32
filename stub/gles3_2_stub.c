@@ -64,6 +64,12 @@ GL_APICALL void GL_APIENTRY glDeleteVertexArrays(GLsizei n,
 #ifdef DEBUG_VERBOSE
   log_console("glDeleteVertexArrays: n:%d arrays:%p", n, arrays);
 #endif
+
+#ifdef CACHE_GL_STATE
+  for (GLsizei i = 0; i < n; i++)
+    shadow_invalidate_vao(arrays[i]);
+#endif
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
 
@@ -297,6 +303,28 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
               access & GL_MAP_READ_BIT ? true : false, buf);
 #endif
 
+  // If this buffer is already mapped with a compatible range/access,
+  // just reuse the existing mapping and DO NOT send an IPC.
+  // this is for cores that do not call glUnmapBuffer, which results
+  // in OOM crash
+  for (uint32_t i = 1; i < MAX_MAPS; ++i)
+  {
+    if (!stub_maps[i].ptr)
+      continue;
+
+    if (stub_maps[i].buffer != buf || stub_maps[i].target != target ||
+        stub_maps[i].offset != offset || stub_maps[i].length != length ||
+        stub_maps[i].access != access)
+      continue;
+
+#ifdef DEBUG_VERBOSE
+    log_console("glMapBufferRange: re-using existing i:%d ptr:%p", i,
+                stub_maps[i].ptr);
+#endif
+
+    return stub_maps[i].ptr;
+  }
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
 
@@ -345,6 +373,29 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
                 local, C->data_offset, length);
 #endif
     bridge_data_read(local, C->data_offset, length);
+  }
+
+  // GL only allows one active mapping per buffer object
+  for (uint32_t i = 1; i < MAX_MAPS; i++)
+  {
+    if (i == map_id)
+      continue;
+    if (stub_maps[i].ptr && stub_maps[i].buffer == buf)
+    {
+#ifdef DEBUG_VERBOSE
+      log_console("glMapBufferRange: clearing stale stub_maps[%u] for "
+                  "buffer=%u (new map assigned slot %u)",
+                  i, buf, map_id);
+#endif
+      free(stub_maps[i].ptr);
+      stub_maps[i].ptr = NULL;
+      stub_maps[i].length = 0;
+      stub_maps[i].offset = 0;
+      stub_maps[i].buffer = 0;
+      stub_maps[i].target = 0;
+      stub_maps[i].id = 0;
+      stub_maps[i].access = 0;
+    }
   }
 
   stub_maps[map_id].id = map_id;
@@ -605,7 +656,9 @@ GL_APICALL GLboolean GL_APIENTRY glUnmapBuffer(GLenum target)
   }
   else
   {
-    log_error("glUnmapBuffer: target=0x%04x - stub map not found", target);
+    log_error("glUnmapBuffer: target=0x%x m=%p access=0x%x len=%zu buf=%d - "
+              "stub map not found",
+              target, m, m ? m->access : 0, m ? (size_t)m->length : 0, buf);
     C->data_size = 0;
 #ifdef DEBUG_ABORT_ON_GL_ERROR
     abort();
@@ -1765,6 +1818,11 @@ GL_APICALL void GL_APIENTRY glGenSamplers(GLsizei count, GLuint *samplers)
 GL_APICALL void GL_APIENTRY glDeleteSamplers(GLsizei count,
                                              const GLuint *samplers)
 {
+#ifdef CACHE_GL_STATE
+  for (GLsizei i = 0; i < count; i++)
+    shadow_invalidate_sampler(samplers[i]);
+#endif
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_scalar(OP_glDeleteSamplers);
