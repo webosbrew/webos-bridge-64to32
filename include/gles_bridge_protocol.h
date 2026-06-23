@@ -57,21 +57,6 @@
 #define GLES_BRIDGE_WL_CTRL_SHM "0x4703"
 #define GLES_BRIDGE_WL_DATA_SHM "0x4704"
 
-/* ── Ring buffer ───────────────────────────────────────────────────────── */
-// #define BRIDGE_RING_SIZE   8          /* must be power of 2          */
-// #define BRIDGE_SLOT_DATA   (8u * 1024 * 1024)  /* 8 MB per slot      */
-
-/*typedef struct {
-    BridgeCtrl ctrl;
-    uint8_t    data[BRIDGE_SLOT_DATA];
-} BridgeSlot;*/
-
-// typedef struct {
-//     _Atomic uint32_t head;   /* stub writes here   */
-//     _Atomic uint32_t tail;   /* proxy reads here   */
-//     BridgeSlot slots[BRIDGE_RING_SIZE];
-// } BridgeRing;
-
 /* ── Opcodes ─────────────────────────────────────────────────────────────── */
 typedef enum
 {
@@ -1343,6 +1328,7 @@ typedef struct
   _Atomic uint64_t published_seq;
   _Atomic uint64_t completed_seq;
   _Atomic uint64_t data_tail;
+  _Atomic uint32_t consumer_waiting;
 
   int32_t proxy_pid;
   int32_t client_pid;

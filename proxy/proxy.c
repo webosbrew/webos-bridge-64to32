@@ -694,7 +694,7 @@ int main(int argc, char **argv)
 
   if (!ring || !data)
   {
-    log_console("FATAL: cannot map shm");
+    log_error("FATAL: cannot map shm");
     return 1;
   }
 
@@ -723,18 +723,29 @@ int main(int argc, char **argv)
 
   for (;;)
   {
+    atomic_store_explicit(&ring->consumer_waiting, 1, memory_order_seq_cst);
+
     uint64_t published =
         atomic_load_explicit(&ring->published_seq, memory_order_acquire);
 
     if (completed >= published)
     {
-      /* Caught up. Block until the producer publishes */
-      uint64_t val;
-      if (read(req_efd, &val, sizeof(val)) != sizeof(val))
+      atomic_store_explicit(&ring->consumer_waiting, 1, memory_order_seq_cst);
+
+      published =
+          atomic_load_explicit(&ring->published_seq, memory_order_acquire);
+      if (completed >= published)
       {
-        log_error("eventfd read failed: %s", strerror(errno));
-        break;
+        /* Caught up. Block until the producer publishes */
+        uint64_t val;
+        if (read(req_efd, &val, sizeof(val)) != sizeof(val))
+        {
+          log_error("eventfd read failed: %s", strerror(errno));
+          break;
+        }
       }
+
+      atomic_store_explicit(&ring->consumer_waiting, 0, memory_order_seq_cst);
       continue;
     }
 
@@ -816,7 +827,7 @@ int main(int argc, char **argv)
       uint64_t one = 1;
       if (write(resp_efd, &one, sizeof(one)) != sizeof(one))
       {
-        log_console("eventfd write failed: %s", strerror(errno));
+        log_error("eventfd write failed: %s", strerror(errno));
         break;
       }
     }

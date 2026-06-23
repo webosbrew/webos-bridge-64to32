@@ -56,3 +56,7 @@ BridgeCtrl *bridge_ctrl_wl(void);
 #define BRIDGE_CTRL_WL() bridge_ctrl_wl()
 
 extern unsigned int g_stub_current_ctx;
+
+#ifdef DEBUG_OPCODES
+void bridge_dump_backpressure_stats(void);
+#endif

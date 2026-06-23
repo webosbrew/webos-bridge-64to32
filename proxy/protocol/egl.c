@@ -138,10 +138,11 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
 
   if (!p_eglGetPlatformDisplayEXT)
   {
-    log_console(
-        "  ERROR: eglGetPlatformDisplayEXT NOT AVAILABLE in 32-bit EGL");
+    log_error("  ERROR: eglGetPlatformDisplayEXT NOT AVAILABLE in 32-bit EGL");
     C->result = 0;
+#ifdef DEBUG_VERBOSE
     log_console("h_eglGetPlatformDisplayEXT: END (result=0)");
+#endif
     return;
   }
 
@@ -159,9 +160,11 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
 
   if (real == EGL_NO_DISPLAY)
   {
-    log_console("  ERROR: eglGetPlatformDisplayEXT returned EGL_NO_DISPLAY");
+    log_error("  ERROR: eglGetPlatformDisplayEXT returned EGL_NO_DISPLAY");
     C->result = 0;
+#ifdef DEBUG_VERBOSE
     log_console("h_eglGetPlatformDisplayEXT: END (result=0)");
+#endif
     return;
   }
 
@@ -169,7 +172,7 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
       TABLE_ALLOC(egl_displays, EGL_BRIDGE_MAX_DISPLAYS, real, C->client_pid);
   if (!idx)
   {
-    log_console("  WARNING: display table full, reusing slot 1");
+    log_error("  WARNING: display table full, reusing slot 1");
     egl_displays[DEFAULT_EGL_IDX].handle = real;
     idx = 1;
   }
@@ -206,7 +209,7 @@ void h_eglGetDisplay(BridgeCtrl *C, uint8_t *D)
    */
   if (!proxy_wl_display)
   {
-    log_console("h_eglGetDisplay: ERROR no proxy_wl_display");
+    log_error("h_eglGetDisplay: ERROR no proxy_wl_display");
     C->result = 0;
     return;
   }
@@ -268,7 +271,7 @@ void h_eglInitialize(BridgeCtrl *C, uint8_t *D)
   }
   else
   {
-    log_console("h_eglInitialize: ERROR — DISP(%u) returned NULL", di);
+    log_error("h_eglInitialize: ERROR — DISP(%u) returned NULL", di);
   }
 
   if (!e->initialized)
@@ -498,7 +501,9 @@ void h_eglChooseConfig(BridgeCtrl *C, uint8_t *D)
 
   C->result = (uint64_t)(uint32_t)num;
 
+#ifdef DEBUG
   log_console("h_eglChooseConfig: END");
+#endif
   (void)D;
   (void)ok;
 }
@@ -536,7 +541,7 @@ void h_eglCreateWindowSurface(BridgeCtrl *C, uint8_t *D)
 
   if (win_slot >= MAX_WL_EGL_WINDOWS)
   {
-    log_console(
+    log_error(
         "h_eglCreateWindowSurface: ERROR win_slot=%u > MAX_WL_EGL_WINDOWS",
         win_slot);
     C->result = 0;
@@ -547,8 +552,8 @@ void h_eglCreateWindowSurface(BridgeCtrl *C, uint8_t *D)
 
   if (!win)
   {
-    log_console("h_eglCreateWindowSurface: no wl_egl_window win_slot=%u",
-                win_slot);
+    log_error("h_eglCreateWindowSurface: no wl_egl_window win_slot=%u",
+              win_slot);
 
     C->result = 0;
     return;
@@ -1070,9 +1075,9 @@ void h_eglGetProcAddress(BridgeCtrl *C, uint8_t *D)
 
   if (idx >= MAX_DYNAMIC_FUNCS)
   {
-    log_console("h_eglGetProcAddress: egl dyn table full idx: %u >= "
-                "MAX_DYNAMIC_FUNCS: %u",
-                idx, MAX_DYNAMIC_FUNCS);
+    log_error("h_eglGetProcAddress: egl dyn table full idx: %u >= "
+              "MAX_DYNAMIC_FUNCS: %u",
+              idx, MAX_DYNAMIC_FUNCS);
     C->result = 0;
     return;
   }

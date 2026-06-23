@@ -32,8 +32,8 @@ void h_wl_egl_window_create(BridgeCtrl *C, uint8_t *D)
 
   if (surf_id >= PROXY_SURF_MAX)
   {
-    log_console("h_wl_egl_window_create: surf_id=%u > PROXY_SURF_MAX=%u",
-                surf_id, PROXY_SURF_MAX);
+    log_error("h_wl_egl_window_create: surf_id=%u > PROXY_SURF_MAX=%u", surf_id,
+              PROXY_SURF_MAX);
     C->result = 0;
     return;
   }
@@ -102,14 +102,14 @@ void h_wl_egl_window_resize(BridgeCtrl *C, uint8_t *D)
 
   if (slot >= MAX_WL_EGL_WINDOWS)
   {
-    log_console("h_wl_egl_window_resize: slot=%u > MAX_WL_EGL_WINDOWS", slot);
+    log_error("h_wl_egl_window_resize: slot=%u > MAX_WL_EGL_WINDOWS", slot);
     return;
   }
 
   if (!proxy_wl_egl_windows[slot])
   {
-    log_console("h_wl_egl_window_resize: invalid slot=%u egl_window=%p", slot,
-                proxy_wl_egl_windows[slot]);
+    log_error("h_wl_egl_window_resize: invalid slot=%u egl_window=%p", slot,
+              proxy_wl_egl_windows[slot]);
     return;
   }
 

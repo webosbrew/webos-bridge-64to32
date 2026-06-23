@@ -879,6 +879,13 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 #ifdef DEBUG_VERBOSE
   log_console("eglSwapBuffers dpy=%p egl surf=%p", dpy, surface);
 #endif
+#ifdef DEBUG_OPCODES
+  {
+    static uint64_t swap_count = 0;
+    if ((++swap_count % 60) == 0)
+      bridge_dump_backpressure_stats();
+  }
+#endif
   /* Always synchronous — must block until the frame is on screen */
   return (EGLBoolean)BRIDGE_SEND_CALL();
 }

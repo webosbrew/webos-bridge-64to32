@@ -32,8 +32,10 @@ WL_EXPORT struct wl_egl_window *wl_egl_window_create(struct wl_surface *surface,
   if (!w)
     return NULL;
 
+#ifdef DEBUG
   log_console("1. wl_egl_window_create - surface %p, width %d, height %d",
               surface, width, height);
+#endif
 
   w->surface = surface;
   w->width = width;
@@ -67,14 +69,18 @@ WL_EXPORT struct wl_egl_window *wl_egl_window_create(struct wl_surface *surface,
 
 WL_EXPORT void wl_egl_window_destroy(struct wl_egl_window *egl_window)
 {
+#ifdef DEBUG_WAYLAND
   log_console("wl_egl_window_destroy");
+#endif
 
   struct wl_egl_window *w = (void *)egl_window;
   if (!w)
     return;
 
+#ifdef DEBUG_WAYLAND
   log_console("wl_egl_window_destroy: egl_window: %p w->slot=%d", egl_window,
               w->slot);
+#endif
 
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();

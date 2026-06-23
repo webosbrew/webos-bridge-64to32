@@ -78,6 +78,19 @@ static uint64_t g_local_seq = 0;
 static uint64_t g_local_data_head = 0;
 static pid_t g_client_pid = 0;
 
+#ifdef DEBUG_OPCODES
+static uint64_t g_ring_full_stalls = 0;
+static uint64_t g_data_full_stalls = 0;
+
+void bridge_dump_backpressure_stats(void)
+{
+  log_always("=== bridge backpressure: ring_full_stalls=%llu "
+             "data_full_stalls=%llu ===",
+             (unsigned long long)g_ring_full_stalls,
+             (unsigned long long)g_data_full_stalls);
+}
+#endif
+
 static void print_environment_version(void)
 {
   static char pretty[128];
@@ -358,6 +371,9 @@ static BridgeCtrl *ring_reserve_slot(uint64_t *out_seq)
       break;
 
     /* Ring full */
+#ifdef DEBUG_OPCODES
+    g_ring_full_stalls++;
+#endif
     struct timespec ts = {0, 20000}; /* 20us */
     nanosleep(&ts, NULL);
   }
@@ -403,6 +419,9 @@ static uint32_t ring_data_alloc(size_t size)
 
     if (new_head - tail > GLES_BRIDGE_DATA_SIZE)
     {
+#ifdef DEBUG_OPCODES
+      g_data_full_stalls++;
+#endif
       // full
       struct timespec ts = {0, 20000};
       nanosleep(&ts, NULL);
@@ -459,7 +478,8 @@ void bridge_send_void(void)
 
   atomic_store_explicit(&g_ring->published_seq, g_cur_seq + 1,
                         memory_order_release);
-  efd_post(req_efd);
+  if (atomic_load_explicit(&g_ring->consumer_waiting, memory_order_seq_cst))
+    efd_post(req_efd);
 
   pthread_mutex_unlock(&g_lock);
 }
@@ -470,7 +490,9 @@ uint64_t bridge_send_call(void)
 
   uint64_t seq = g_cur_seq;
   atomic_store_explicit(&g_ring->published_seq, seq + 1, memory_order_release);
-  efd_post(req_efd);
+
+  if (atomic_load_explicit(&g_ring->consumer_waiting, memory_order_seq_cst))
+    efd_post(req_efd);
 
   // wait until dispatched
   for (;;)
