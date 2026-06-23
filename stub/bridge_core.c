@@ -46,6 +46,8 @@
 #define GLES_PROXY_DEFAULT_PATH "/media/developer/temp/gles_proxy"
 #endif
 
+#define BP_SLEEP_DURATION 5000 /* 5us */
+
 static BridgeShm g_ctrl_shm;
 static BridgeShm g_data_shm;
 static BridgeShm g_ctrl_wl_shm;
@@ -374,7 +376,7 @@ static BridgeCtrl *ring_reserve_slot(uint64_t *out_seq)
 #ifdef DEBUG_OPCODES
     g_ring_full_stalls++;
 #endif
-    struct timespec ts = {0, 20000}; /* 20us */
+    struct timespec ts = {0, BP_SLEEP_DURATION};
     nanosleep(&ts, NULL);
   }
 
@@ -423,7 +425,7 @@ static uint32_t ring_data_alloc(size_t size)
       g_data_full_stalls++;
 #endif
       // full
-      struct timespec ts = {0, 20000};
+      struct timespec ts = {0, BP_SLEEP_DURATION};
       nanosleep(&ts, NULL);
       continue;
     }
