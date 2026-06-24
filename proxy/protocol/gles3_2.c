@@ -437,6 +437,29 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
   if ((GLuint)old_binding != buffer)
     glBindBuffer(target, buffer);
 
+  // if this buffer/target is still tracked as mapped (the client
+  // mapped it again without calling glUnmapBuffer first), unmap it
+  for (uint32_t i = 1; i < MAX_MAPS; ++i)
+  {
+    if (maps[i].real_ptr && maps[i].buffer == buffer &&
+        maps[i].target == target)
+    {
+#ifdef DEBUG_VERBOSE
+      log_console("h_glMapBufferRange: buffer=%u target=0x%04x re-mapped "
+                  "without unmap — unmapping stale slot %u first",
+                  buffer, target, i);
+#endif
+      glUnmapBuffer(target);
+      maps[i].real_ptr = NULL;
+      maps[i].length = 0;
+      maps[i].offset = 0;
+      maps[i].buffer = 0;
+      maps[i].target = 0;
+      maps[i].access = 0;
+      break;
+    }
+  }
+
   void *real = glMapBufferRange(target, offset, length, access);
 
   if (!real)
@@ -469,27 +492,7 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
   C->data_offset = 0;
   C->data_size = length;
 
-  uint32_t idx = 0;
-  for (uint32_t i = 1; i < MAX_MAPS; ++i)
-  {
-    if (maps[i].real_ptr && maps[i].buffer == buffer &&
-        maps[i].target == target)
-    {
-      idx = i; // reuse existing slot
-      break;
-    }
-  }
-
-  if (!idx)
-    idx = alloc_map(real, 0, length, target, buffer, access);
-  else
-  {
-    // update length/offset/access
-    maps[idx].real_ptr = real;
-    maps[idx].length = length;
-    maps[idx].offset = 0;
-    maps[idx].access = access;
-  }
+  uint32_t idx = alloc_map(real, 0, length, target, buffer, access);
 
   if (!idx)
     log_error("h_glMapBufferRange: alloc_map failed for buffer=%u "

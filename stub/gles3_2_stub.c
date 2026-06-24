@@ -398,6 +398,19 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
     }
   }
 
+  if (stub_maps[map_id].ptr && stub_maps[map_id].ptr != local)
+  {
+#ifdef DEBUG_VERBOSE
+    log_console("glMapBufferRange: buffer=%u target=0x%04x re-mapped onto "
+                "slot %u without unmap — freeing previous %zu-byte mapping",
+                buf, target, map_id, (size_t)stub_maps[map_id].length);
+#endif
+    // SAME map_id for a buffer that was mapped again without an intervening
+    // glUnmapBuffer free it before overwriting
+    free(stub_maps[map_id].ptr);
+    stub_maps[map_id].ptr = NULL;
+  }
+
   stub_maps[map_id].id = map_id;
   stub_maps[map_id].ptr = local;
   stub_maps[map_id].length = length;
