@@ -328,8 +328,7 @@ jobs:
     - name: Rename IPK (tag build)
       if: github.ref_type == 'tag'
       run: |
-        TAG=${GITHUB_REF#refs/tags/}
-        mv *.ipk "dist/rel/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_ARCH }}_${TAG}.ipk"
+        mv *.ipk "dist/rel/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_ARCH }}_${{ github.ref_name }}.ipk"
 
     - name: Rename IPK (non-tag build)
       if: github.ref_type != 'tag'
@@ -350,14 +349,14 @@ jobs:
         path: "dist/webos-64to32-bridge-gles.tar.gz"
         archive: false
 
-    - name: Generate Manifest (default only)
-      if: github.repository == 'webosbrew/Retroarch'
+    - name: Generate Manifest (tag build)
+      if: github.ref_type == 'tag'
       shell: bash
       run: |
-        webosbrew-gen-manifest -o webos/${{ env.PACKAGE_NAME }}.manifest.json \
-            -p dist/rel/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_ARCH }}_${{ github.ref_name }}.ipk \
-            -i https://github.com/webosbrew/webos-bridge-64to32/blob/main/dist/ipk/icon.png \
-            -l https://github.com/webosbrew/webos-bridge-64to32
+        webosbrew-gen-manifest -o dist/rel/${{ env.PACKAGE_NAME }}.manifest.json \
+          -p dist/rel/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_ARCH }}_${{ github.ref_name }}.ipk \
+          -i https://github.com/webosbrew/webos-bridge-64to32/blob/main/dist/ipk/icon.png \
+          -l https://github.com/webosbrew/webos-bridge-64to32
 
     - name: Build gles-bridge (debug)
       if: github.ref_type != 'tag'
@@ -427,6 +426,7 @@ jobs:
         files: |
           dist/rel/${{ env.PACKAGE_NAME }}_${{ env.PACKAGE_ARCH }}_${{ github.ref_name }}.ipk
           dist/webos-64to32-bridge-gles.tar.gz
+          dist/rel/${{ env.PACKAGE_NAME }}.manifest.json
         name: Release ${{ github.ref_name }}
         tag_name: ${{ github.ref_name }}
       env:
