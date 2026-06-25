@@ -153,8 +153,7 @@ jobs:
           $SRC/libfreetype.so.6.20.6 \
           $SRC/libhelpers.so.2 \
           $SRC/libhelpers.so.2.0.0 \
-          $SRC/libpng16.so.16 \
-          $SRC/libpng16.so.16.57.0 \
+          $SRC/libpng16.so.* \
           $SRC/libpulse.so* \
           $SRC/libpulse-simple.so* \
           $SRC/libsndfile.so.1 \
@@ -185,8 +184,7 @@ jobs:
         cp -av \
           $SRC/libpbnjson_c.so.2 \
           $SRC/libpbnjson_c.so.2.15.0 \
-          $SRC/liburiparser.so.1 \
-          $SRC/liburiparser.so.1.2.0 \
+          $SRC/liburiparser.so.* \
           $SRC/libyajl.so.2 \
           $SRC/libyajl.so.2.1.0 \
         $DST/
@@ -200,10 +198,8 @@ jobs:
           $SRC/libcurl.so.4 \
           $SRC/libcurl.so.4.8.0 \
           $SRC/libssl.so.3 \
-          $SRC/libstdc++.so.6 \
-          $SRC/libstdc++.so.6.0.33 \
-          $SRC/libusb-1.0.so.0 \
-          $SRC/libusb-1.0.so.0.5.0 \
+          $SRC/libstdc++.so.* \
+          $SRC/libusb-1.0.so.* \
           $DST/
 
     - name: Copy dependency libraries (kodi)
