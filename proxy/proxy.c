@@ -813,8 +813,9 @@ int main(int argc, char **argv)
 #endif
 
     /* Release this slot's data-arena range back to the producer. */
-    atomic_store_explicit(&ring->data_tail, c->data_watermark,
-                          memory_order_release);
+    if (c->data_watermark_valid)
+      atomic_store_explicit(&ring->data_tail, c->data_watermark,
+                            memory_order_release);
 
     int needs_resp = c->needs_response;
 

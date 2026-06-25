@@ -444,6 +444,7 @@ void bridge_begin(void)
   g_cur_slot = ring_reserve_slot(&g_cur_seq);
   g_cur_slot->client_pid = g_client_pid;
   g_cur_slot->data_watermark = g_local_data_head;
+  g_cur_slot->data_watermark_valid = 0;
 }
 
 uint32_t bridge_data_write(const void *src, size_t size)
@@ -454,6 +455,7 @@ uint32_t bridge_data_write(const void *src, size_t size)
     memcpy(g_data + offset, src, size);
 
   g_cur_slot->data_watermark = g_local_data_head;
+  g_cur_slot->data_watermark_valid = 1;
   return offset;
 }
 

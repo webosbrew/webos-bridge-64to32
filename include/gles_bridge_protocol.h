@@ -1316,6 +1316,7 @@ typedef struct
   int32_t client_pid;
 
   uint64_t data_watermark;
+  uint8_t data_watermark_valid;
 
   uint8_t _pad[4]; /* keep struct size a multiple of 8   */
 } BridgeCtrl;

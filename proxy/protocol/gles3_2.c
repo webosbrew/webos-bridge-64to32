@@ -411,6 +411,7 @@ static GLenum get_binding_enum(GLenum target)
 void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
 {
   AR(r);
+  (void)D;
 
   GLenum target = ar_u32(&r);
   GLintptr offset = (GLintptr)ar_i64(&r);
@@ -486,11 +487,8 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
     log_console("h_glMapBufferRange memcpy: real=%p length=%lld ", real,
                 length);
 #endif
-    memcpy(D, real, (size_t)length);
+    memcpy(dp(C->data_offset), real, (size_t)length);
   }
-
-  C->data_offset = 0;
-  C->data_size = length;
 
   uint32_t idx = alloc_map(real, 0, length, target, buffer, access);
 
@@ -2859,12 +2857,14 @@ void h_glDebugMessageInsert(BridgeCtrl *C, uint8_t *D)
   GLenum severity = ar_u32(&r);
   GLsizei length = ar_i32(&r);
 
-  const GLchar *buf = (const GLchar *)D;
+  const GLchar *buf =
+      (C->data_size > 0) ? (const GLchar *)dp(C->data_offset) : NULL;
 
   glDebugMessageInsert(source, type, id, severity, length, buf);
 
   C->result = 0;
   C->result_buf_len = 0;
+  (void)D;
 }
 
 void h_glGetDebugMessageLog(BridgeCtrl *C, uint8_t *D)
@@ -2960,12 +2960,14 @@ void h_glPushDebugGroup(BridgeCtrl *C, uint8_t *D)
   GLuint id = ar_u32(&r);
   GLsizei length = ar_i32(&r);
 
-  const GLchar *message = (const GLchar *)D;
+  const GLchar *message =
+      (C->data_size > 0) ? (const GLchar *)dp(C->data_offset) : NULL;
 
   glPushDebugGroup(source, id, length, message);
 
   C->result = 0;
   C->result_buf_len = 0;
+  (void)D;
 }
 
 void h_glCopyImageSubData(BridgeCtrl *C, uint8_t *D)
@@ -3067,12 +3069,14 @@ void h_glObjectLabel(BridgeCtrl *C, uint8_t *D)
   GLuint name = ar_u32(&r);
   GLsizei length = ar_i32(&r);
 
-  const GLchar *label = (const GLchar *)D;
+  const GLchar *label =
+      (C->data_size > 0) ? (const GLchar *)dp(C->data_offset) : NULL;
 
   glObjectLabel(identifier, name, length, label);
 
   C->result = 0;
   C->result_buf_len = 0;
+  (void)D;
 }
 
 void h_glObjectPtrLabel(BridgeCtrl *C, uint8_t *D)
@@ -3082,12 +3086,14 @@ void h_glObjectPtrLabel(BridgeCtrl *C, uint8_t *D)
   const void *ptr = (const void *)(uintptr_t)ar_u64(&r);
   GLsizei length = ar_i32(&r);
 
-  const GLchar *label = (const GLchar *)D;
+  const GLchar *label =
+      (C->data_size > 0) ? (const GLchar *)dp(C->data_offset) : NULL;
 
   glObjectPtrLabel(ptr, length, label);
 
   C->result = 0;
   C->result_buf_len = 0;
+  (void)D;
 }
 
 void h_glPrimitiveBoundingBox(BridgeCtrl *C, uint8_t *D)

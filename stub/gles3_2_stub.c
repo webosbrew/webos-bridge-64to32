@@ -338,6 +338,12 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
   aw_u32(&W, buf);
   C->args_len = W.pos;
 
+  if (access & GL_MAP_READ_BIT)
+  {
+    C->data_offset = bridge_data_write(NULL, (size_t)length);
+    C->data_size = (uint32_t)length;
+  }
+
   BRIDGE_SEND_CALL();
 
   uint32_t map_id = (uint32_t)C->result;
