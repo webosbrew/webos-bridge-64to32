@@ -1,5 +1,8 @@
 #include "../proxy.h"
 
+#include <unistd.h>
+#include <syscall.h>
+
 #define EGL_EGLEXT_PROTOTYPES
 #include <EGL/eglext.h>
 

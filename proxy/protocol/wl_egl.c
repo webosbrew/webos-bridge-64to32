@@ -14,73 +14,71 @@ void h_wl_egl_window_create(BridgeCtrl *C, uint8_t *D)
   (void)D;
   AR(r);
 
-  uint32_t surf_id = ar_u32(&r);
+  uint32_t surface_id = ar_u32(&r); // from wl_proxy_get_id(surface) in stub
   int width = ar_i32(&r);
   int height = ar_i32(&r);
 
 #ifdef DEBUG_VERBOSE
-  log_console("h_wl_egl_window_create: surf_id: %d width: %d height: %d",
-              surf_id, width, height);
+  log_console("h_wl_egl_window_create: surface_id: %d width: %d height: %d",
+              surface_id, width, height);
 #endif
 
-  if (proxy_wl_egl_windows[surf_id])
+  if (proxy_wl_egl_windows[surface_id])
   {
-    log_console("h_wl_egl_window_create: WARNING surf_id %u already has a "
+    log_console("h_wl_egl_window_create: WARNING surface_id %u already has a "
                 "wl_egl_window",
-                surf_id);
+                surface_id);
   }
 
-  if (surf_id >= PROXY_SURF_MAX)
+  if (surface_id >= PROXY_SURF_MAX)
   {
-    log_error("h_wl_egl_window_create: surf_id=%u > PROXY_SURF_MAX=%u", surf_id,
+    log_error("h_wl_egl_window_create: surface_id=%u > PROXY_SURF_MAX=%u", surface_id,
               PROXY_SURF_MAX);
     C->result = 0;
     return;
   }
 
 #ifdef HAVE_OWN_WAYLAND_CLIENT
-  if (!g_surfs[surf_id])
+  if (!g_surfs[surface_id])
   {
-    log_console("h_wl_egl_window_create: invalid surf_id=%u", surf_id);
+    log_console("h_wl_egl_window_create: invalid surface_id=%u", surface_id);
     C->result = 0;
     return;
   }
 
-  struct wl_surface *real_surf = g_surfs[surf_id];
+  // get already stored surface
+  struct wl_surface *real_surf = g_surfs[surface_id];
 #else
-  // in 64-bit libwayland-client: surf_id refers to a surface pointer in 64-bit
-  // space there is no way to access this in 32-bit at present so this is the
-  // end of the road..
-  // TODO: come up with a solution
-  struct wl_surface *real_surf = g_surfs[surf_id];
+  // in 64-bit libwayland-client - TODO:
+  struct wl_surface *real_surf = NULL;
 #endif
 
   struct wl_egl_window *w = wl_egl_window_create(real_surf, width, height);
   if (!w)
   {
     log_console(
-        "h_wl_egl_window_create: wl_egl_window_create FAILED surf_id=%u",
-        surf_id);
+        "h_wl_egl_window_create: wl_egl_window_create FAILED surface_id=%u",
+        surface_id);
     C->result = 0;
     return;
   }
 
-  if (proxy_wl_egl_windows[surf_id])
+  if (proxy_wl_egl_windows[surface_id])
   {
-    log_console("h_wl_egl_window_create: surf_id=%u already occupied", surf_id);
+    log_console("h_wl_egl_window_create: surf_id=%u already occupied", surface_id);
 
-    wl_egl_window_destroy(proxy_wl_egl_windows[surf_id]);
+    wl_egl_window_destroy(proxy_wl_egl_windows[surface_id]);
   }
 
-  proxy_wl_egl_windows[surf_id] = w;
-  proxy_wl_egl_window_owner[surf_id] = C->client_pid;
+  proxy_wl_egl_windows[surface_id] = w;
+  proxy_wl_egl_window_owner[surface_id] = C->client_pid;
 
-  C->result = surf_id;
+  C->result = surface_id;
 
 #ifdef DEBUG_VERBOSE
-  log_console("h_wl_egl_window_create: created window into slot(surf_id)=%u "
+  log_console("h_wl_egl_window_create: created window into slot(surface_id)=%u "
               "real=%p (%dx%d)",
-              surf_id, w, width, height);
+              surface_id, w, width, height);
 #endif
 }
 

@@ -32,9 +32,11 @@ WL_EXPORT struct wl_egl_window *wl_egl_window_create(struct wl_surface *surface,
   if (!w)
     return NULL;
 
+  uint32_t proxy_id = wl_proxy_get_id((struct wl_proxy *)surface);
+
 #ifdef DEBUG
-  log_console("1. wl_egl_window_create - surface %p, width %d, height %d",
-              surface, width, height);
+  log_console("1. wl_egl_window_create - surface %p, width %d, height %d proxy id: %d",
+              surface, width, height, proxy_id);
 #endif
 
   w->surface = surface;
@@ -49,7 +51,7 @@ WL_EXPORT struct wl_egl_window *wl_egl_window_create(struct wl_surface *surface,
   setup_scalar(OP_wl_egl_window_create);
 
   ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
-  aw_u32(&W, wl_proxy_get_id((struct wl_proxy *)surface)); /* surf_id */
+  aw_u32(&W, proxy_id); /* surf_id */
   aw_i32(&W, width);
   aw_i32(&W, height);
   C->args_len = W.pos;
