@@ -35,8 +35,9 @@ WL_EXPORT struct wl_egl_window *wl_egl_window_create(struct wl_surface *surface,
   uint32_t proxy_id = wl_proxy_get_id((struct wl_proxy *)surface);
 
 #ifdef DEBUG
-  log_console("1. wl_egl_window_create - surface %p, width %d, height %d proxy id: %d",
-              surface, width, height, proxy_id);
+  log_console(
+      "1. wl_egl_window_create - surface %p, width %d, height %d proxy id: %d",
+      surface, width, height, proxy_id);
 #endif
 
   w->surface = surface;

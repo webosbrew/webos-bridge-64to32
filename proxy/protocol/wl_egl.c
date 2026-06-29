@@ -32,8 +32,8 @@ void h_wl_egl_window_create(BridgeCtrl *C, uint8_t *D)
 
   if (surface_id >= PROXY_SURF_MAX)
   {
-    log_error("h_wl_egl_window_create: surface_id=%u > PROXY_SURF_MAX=%u", surface_id,
-              PROXY_SURF_MAX);
+    log_error("h_wl_egl_window_create: surface_id=%u > PROXY_SURF_MAX=%u",
+              surface_id, PROXY_SURF_MAX);
     C->result = 0;
     return;
   }
@@ -65,7 +65,8 @@ void h_wl_egl_window_create(BridgeCtrl *C, uint8_t *D)
 
   if (proxy_wl_egl_windows[surface_id])
   {
-    log_console("h_wl_egl_window_create: surf_id=%u already occupied", surface_id);
+    log_console("h_wl_egl_window_create: surf_id=%u already occupied",
+                surface_id);
 
     wl_egl_window_destroy(proxy_wl_egl_windows[surface_id]);
   }
