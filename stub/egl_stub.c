@@ -244,7 +244,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglReleaseThread(void)
  */
 EGLAPI const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name)
 {
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglQueryString] dpy=%p name=%d", dpy, name);
 #endif
 
@@ -257,7 +257,7 @@ EGLAPI const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name)
   /* If cached AND non-empty - return it */
   if (valid[di][ni] && cache[di][ni][0] != '\0')
   {
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_EGL_GETPROC
     log_console("[eglQueryString] cache hit di=%u ni=%d -> \"%s\"", di, ni,
                 cache[di][ni]);
 #endif
@@ -265,7 +265,7 @@ EGLAPI const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name)
   }
 
   /* Otherwise: force a real query */
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglQueryString] cache miss di=%u ni=%d", di, ni);
 #endif
 
@@ -278,7 +278,7 @@ EGLAPI const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name)
   aw_i32(&W, name);
   C->args_len = W.pos;
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglQueryString] sending opcode=%u", C->opcode);
 #endif
 
@@ -302,7 +302,7 @@ EGLAPI const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name)
   cache[di][ni][BRIDGE_RESULT_SIZE - 1] = '\0';
   valid[di][ni] = 1;
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglQueryString] received=\"%s\"", cache[di][ni]);
 #endif
   return cache[di][ni];
@@ -317,7 +317,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglGetConfigs(EGLDisplay dpy, EGLConfig *configs,
                                             EGLint config_size,
                                             EGLint *num_config)
 {
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglGetConfigs] dpy=%p idx=%u config_size=%d", (void *)dpy,
               H2I(dpy), config_size);
 #endif
@@ -340,7 +340,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglGetConfigs(EGLDisplay dpy, EGLConfig *configs,
   C->data2_offset = 0;
   C->data2_size = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglGetConfigs] sending opcode=%u data_offset=%u data_size=%u",
               C->opcode, C->data_offset, C->data_size);
 #endif
@@ -349,7 +349,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglGetConfigs(EGLDisplay dpy, EGLConfig *configs,
   EGLBoolean ok = (EGLBoolean)(r >> 32);      /* high 32 bits */
   EGLint returned = (EGLint)(r & 0xFFFFFFFF); /* low 32 bits  */
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglGetConfigs] returned ok=%d num=%d", ok, returned);
 #endif
 
@@ -382,7 +382,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
                                               EGLint config_size,
                                               EGLint *num_config)
 {
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglChooseConfig] BEGIN");
   log_console("  dpy=%p", dpy);
   log_console("  attrib_list=%p", attrib_list);
@@ -404,7 +404,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
 
   uint32_t attr_sz = attrib_list_bytes(attrib_list);
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("  attr_sz=%u", attr_sz);
 #endif
 
@@ -414,8 +414,9 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
 
   ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
   aw_u32(&W, H2I(dpy));
-  aw_i32(&W, config_size);
   aw_u32(&W, attr_sz);
+  aw_u32(&W, configs ? 1 : 0);
+  aw_i32(&W, config_size);
   C->args_len = W.pos;
 
   uint32_t attr_off = attr_sz ? bridge_data_write(attrib_list, attr_sz) : 0;
@@ -427,30 +428,32 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
   C->data2_offset = out;
   C->data2_size = out_sz;
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("  sending opcode=%u", C->opcode);
   log_console("  data_offset=%u data_size=%u", C->data_offset, C->data_size);
   log_console("  data2_offset=%u data2_size=%u", C->data2_offset,
               C->data2_size);
 #endif
 
-  EGLBoolean ok = (EGLBoolean)BRIDGE_SEND_CALL();
+  uint64_t ret = BRIDGE_SEND_CALL();
+  EGLint returned_num = (EGLint)(ret & 0xffffffffu);
+  EGLBoolean ok = (EGLBoolean)((ret >> 32) & 0xffffffffu);
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("  BRIDGE_SEND_CALL returned ok=%d", ok);
   log_console("  C->result (num_config)=%llu",
               (unsigned long long)BRIDGE_CTRL()->result);
 #endif
 
   if (num_config)
-    *num_config = (EGLint)BRIDGE_CTRL()->result;
+    *num_config = returned_num;
 
   if (configs && ok && *num_config > 0)
   {
     int cnt = *num_config < config_size ? *num_config : config_size;
     uint32_t tmp[EGL_BRIDGE_MAX_CONFIGS];
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
     log_console("  reading back %d config indices", cnt);
 #endif
 
@@ -458,17 +461,17 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
 
     for (int i = 0; i < cnt; i++)
     {
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
       log_console("    tmp[%d] = %u", i, tmp[i]);
 #endif
       configs[i] = I2H(EGLConfig, tmp[i]);
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
       log_console("    configs[%d] = %p", i, configs[i]);
 #endif
     }
   }
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("[eglChooseConfig] END (return=%d)", ok);
 #endif
   return ok;
@@ -479,17 +482,51 @@ EGLAPI EGLBoolean EGLAPIENTRY eglGetConfigAttrib(EGLDisplay dpy,
                                                  EGLint attribute,
                                                  EGLint *value)
 {
+#ifdef DEBUG_EGL_GETPROC
+  log_console("eglGetConfigAttrib dpy=%p config=%p attr=%d value_ptr=%p", dpy,
+              config, attribute, value);
+#endif
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_egl(OP_eglGetConfigAttrib);
   ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("eglGetConfigAttrib H2I(dpy)=%u H2I(config)=%u", H2I(dpy),
+              H2I(config));
+#endif
+
   aw_u32(&W, H2I(dpy));
   aw_u32(&W, H2I(config));
   aw_i32(&W, attribute);
   C->args_len = W.pos;
-  EGLBoolean ok = (EGLBoolean)BRIDGE_SEND_CALL();
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("eglGetConfigAttrib sending opcode=%u args_len=%u", C->opcode,
+              C->args_len);
+#endif
+
+  uint64_t ret = BRIDGE_SEND_CALL();
+
+  EGLint val = (EGLint)(ret & 0xffffffffu);
+  EGLBoolean ok = (EGLBoolean)((ret >> 32) & 0xffffffffu);
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("eglGetConfigAttrib ret=%llu ok=%d val=%d",
+              (unsigned long long)ret, ok, val);
+#endif
+
   if (value)
-    *value = (EGLint)BRIDGE_CTRL()->result;
+  {
+    *value = val;
+#ifdef DEBUG_EGL_GETPROC
+    log_console("eglGetConfigAttrib wrote value=%d", *value);
+#endif
+  }
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("eglGetConfigAttrib return=%d", ok);
+#endif
   return ok;
 }
 
@@ -557,6 +594,20 @@ EGLAPI EGLSurface EGLAPIENTRY eglCreateWindowSurface(
 #else
   return I2H(EGLSurface, BRIDGE_SEND_CALL());
 #endif
+}
+
+EGLAPI EGLSurface EGLAPIENTRY eglCreatePlatformWindowSurfaceEXT(
+    EGLDisplay display, EGLConfig config, EGLNativeWindowType native_window,
+    const EGLint *attrib_list)
+{
+#ifdef DEBUG
+  log_console("2. eglCreatePlatformWindowSurfaceEXT display=%p config=%p "
+              "native_window=%p attrib_list=%p",
+              display, config, native_window, attrib_list);
+#endif
+
+  return eglCreateWindowSurface(
+      display, config, (EGLNativeWindowType)native_window, attrib_list);
 }
 
 EGLAPI EGLSurface EGLAPIENTRY eglCreatePbufferSurface(EGLDisplay dpy,
@@ -744,7 +795,7 @@ EGLAPI EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy, EGLConfig config,
 
 #ifdef CACHE_GL_STATE
   if (raw != 0)
-    g_stub_new_ctx = raw;
+    g_stub_new_ctx = raw; // triger cache reset
   // stub_context_state_reset((unsigned int)raw);
 #endif
 
@@ -765,6 +816,12 @@ EGLAPI EGLBoolean EGLAPIENTRY eglDestroyContext(EGLDisplay dpy, EGLContext ctx)
   aw_u32(&W, H2I(ctx));
   C->args_len = W.pos;
   return (EGLBoolean)BRIDGE_SEND_CALL();
+
+#ifdef CACHE_GL_STATE
+  if (H2I(ctx) != 0)
+    g_stub_new_ctx = H2I(ctx); // triger cache reset
+  // stub_context_state_reset((unsigned int)ctx);
+#endif
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay display,
@@ -880,6 +937,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
   log_console("eglSwapBuffers dpy=%p egl surf=%p", dpy, surface);
 #endif
 #ifdef DEBUG_OPCODES
+  log_console("eglSwapBuffers logging swaps");
   {
     static uint64_t swap_count = 0;
     if ((++swap_count % 60) == 0)
@@ -887,6 +945,7 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
   }
 #endif
   /* Always synchronous — must block until the frame is on screen */
+  log_console("eglSwapBuffers calling bridge_send_call");
   return (EGLBoolean)BRIDGE_SEND_CALL();
 }
 
@@ -1358,6 +1417,14 @@ eglGetProcAddress(const char *procname)
 #endif
     return core;
   }
+
+  /* eglGetPlatformDisplayEXT substitutes proxy_wl_display for the
+   * native display instead of forwarding the client's meaningless pointer */
+  if (!strcmp(procname, "eglGetPlatformDisplayEXT"))
+    return (void *)eglGetPlatformDisplayEXT;
+
+  if (!strcmp(procname, "eglCreatePlatformWindowSurfaceEXT"))
+    return (void *)eglCreatePlatformWindowSurfaceEXT;
 
   /* 1. GLES table */
   ProcEntry *p = find_proc(procname);

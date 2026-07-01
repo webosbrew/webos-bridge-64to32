@@ -450,7 +450,7 @@ GL_APICALL void GL_APIENTRY glTexStorage2D(GLenum target, GLsizei levels,
   C->args_len = W.pos;
 
 #ifdef DEBUG_VERBOSE
-  log_console("[stub][glTexStorage2D] sending opcode=%u", C->opcode);
+  log_console("[glTexStorage2D] sending opcode=%u", C->opcode);
 #endif
 
   BRIDGE_SEND_VOID();

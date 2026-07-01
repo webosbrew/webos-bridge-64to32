@@ -2632,31 +2632,67 @@ GL_APICALL void GL_APIENTRY glDrawElements(GLenum mode, GLsizei count,
     size_t index_size = (type == GL_UNSIGNED_SHORT) ? 2
                         : (type == GL_UNSIGNED_INT) ? 4
                                                     : 1;
-    size_t bytes = count * index_size;
+    size_t bytes = (size_t)count * index_size;
     C->data_offset = bridge_data_write(indices, bytes);
-    C->data_size = bytes;
+    C->data_size = (uint32_t)bytes;
     index_bytes = (const uint8_t *)indices;
     idx = 0;
   }
 
   aw_u64(&W, idx);
   aw_u32(&W, is_client_ptr);
+
+  uint32_t attrib_count = 0;
+  uint32_t count_pos = W.pos;
+  aw_u32(&W, 0); /* placeholder — filled in after the loop */
+
+  if (is_client_ptr && index_bytes)
+  {
+    /* Compute the vertex index range so we copy exactly the data needed */
+    GLintptr min_vertex = 0, max_vertex = (GLintptr)count - 1;
+    mapped_index_bounds(index_bytes, count, type, 0, &min_vertex, &max_vertex);
+    GLintptr last_vertex = max_vertex;
+
+    for (int i = 0; i < MAX_VERTEX_ATTRIBS; i++)
+    {
+      AttribState *a = &g_attrib_stub_state[i];
+      if (!a->enabled || a->vbo || !a->pointer)
+        continue;
+
+      size_t elem = gl_type_size(a->type);
+      size_t stride_eff =
+          a->stride ? (size_t)a->stride : (size_t)(a->size * elem);
+      /* Cover vertices [0 .. last_vertex] so all referenced indices are valid
+       */
+      size_t vbytes =
+          ((size_t)last_vertex + 1) * stride_eff + (size_t)(a->size * elem);
+      uint32_t voff = bridge_data_write((void *)a->pointer, vbytes);
+
+#ifdef DEBUG_VERBOSE
+      log_console("[DrawElements] copy attrib=%d bytes=%u off=%u", i,
+                  (unsigned)vbytes, voff);
+#endif
+      aw_u32(&W, (uint32_t)i);
+      aw_u32(&W, voff);
+      attrib_count++;
+    }
+  }
+
+  memcpy(C->args + count_pos, &attrib_count, sizeof(uint32_t));
+
   aw_u32(&W, ebo_piggyback_buffer);
   aw_u32(&W, ebo_piggyback_offset);
   aw_u32(&W, ebo_piggyback_length);
 
-  GLintptr min_vertex = 0, max_vertex = 0;
-  bool have_index_bounds = mapped_index_bounds(index_bytes, count, type, 0,
-                                               &min_vertex, &max_vertex);
+  /* Piggyback dirty mapped-VBO range */
+  GLintptr first_vertex = 0, last_vertex2 = (GLintptr)count;
+  if (index_bytes)
+    mapped_index_bounds(index_bytes, count, type, 0, &first_vertex,
+                        &last_vertex2);
 
-  GLintptr first_vertex = have_index_bounds ? min_vertex : 0;
-  GLintptr last_vertex = have_index_bounds ? max_vertex : (GLintptr)count;
-
-  uint32_t piggyback_buffer = 0;
-  uint32_t piggyback_offset = 0;
-  uint32_t piggyback_length = 0;
+  uint32_t piggyback_buffer = 0, piggyback_offset = 0, piggyback_length = 0;
   uint32_t piggyback_data_off = stub_vbo_piggyback_range(
-      vao, first_vertex, last_vertex, &piggyback_buffer, &piggyback_offset,
+      vao, first_vertex, last_vertex2, &piggyback_buffer, &piggyback_offset,
       &piggyback_length);
 
   aw_u32(&W, piggyback_buffer);

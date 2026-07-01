@@ -112,62 +112,46 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
 
   EGLenum platform = ar_u32(&r);
   uint64_t native_u64 = ar_u64(&r);
-  void *native = (void *)(uintptr_t)(uint32_t)native_u64;
+  (void)native_u64; /* the aarch64 client's native display pointer is never
+                     * meaningful on the 32-bit side */
 
 #ifdef DEBUG_VERBOSE
-  log_console("h_eglGetPlatformDisplayEXT: BEGIN");
-  log_console("  platform=0x%x", platform);
-  log_console("  native_u64=0x%016llx", (unsigned long long)native_u64);
-  log_console("  native(truncated)=%p", native);
+  log_console("h_eglGetPlatformDisplayEXT: platform=0x%x (ignoring client "
+              "native=0x%llx, substituting proxy_wl_display=%p)",
+              platform, (unsigned long long)native_u64, proxy_wl_display);
 #endif
 
   PFNEGLGETPLATFORMDISPLAYEXTPROC p_eglGetPlatformDisplayEXT = NULL;
-  int resolved = 0;
-
-  if (!resolved)
-  {
-#ifdef DEBUG_VERBOSE
-    log_console(
-        "  resolving eglGetPlatformDisplayEXT via eglGetProcAddress...");
-#endif
-    p_eglGetPlatformDisplayEXT =
-        (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress(
-            "eglGetPlatformDisplayEXT");
-#ifdef DEBUG_VERBOSE
-    log_console("  eglGetProcAddress result = %p", p_eglGetPlatformDisplayEXT);
-#endif
-    resolved = 1;
-  }
+  p_eglGetPlatformDisplayEXT =
+      (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress(
+          "eglGetPlatformDisplayEXT");
 
   if (!p_eglGetPlatformDisplayEXT)
   {
-    log_error("  ERROR: eglGetPlatformDisplayEXT NOT AVAILABLE in 32-bit EGL");
+    log_error("h_eglGetPlatformDisplayEXT: ERROR: NOT AVAILABLE in 32-bit EGL");
     C->result = 0;
-#ifdef DEBUG_VERBOSE
-    log_console("h_eglGetPlatformDisplayEXT: END (result=0)");
-#endif
     return;
   }
 
-#ifdef DEBUG_VERBOSE
-  log_console("  calling eglGetPlatformDisplayEXT(platform=0x%x, native=%p, "
-              "attribs=NULL)",
-              platform, native);
-#endif
-
-  EGLDisplay real = p_eglGetPlatformDisplayEXT(platform, native, NULL);
-
-#ifdef DEBUG_VERBOSE
-  log_console("  eglGetPlatformDisplayEXT returned real=%p", (void *)real);
+#ifdef HAVE_OWN_WAYLAND_CLIENT
+  if (!proxy_wl_display)
+  {
+    log_error("h_eglGetPlatformDisplayEXT: ERROR no proxy_wl_display");
+    C->result = 0;
+    return;
+  }
+  EGLDisplay real =
+      p_eglGetPlatformDisplayEXT(platform, (void *)proxy_wl_display, NULL);
+#else
+  EGLDisplay real =
+      p_eglGetPlatformDisplayEXT(platform, EGL_DEFAULT_DISPLAY, NULL);
 #endif
 
   if (real == EGL_NO_DISPLAY)
   {
-    log_error("  ERROR: eglGetPlatformDisplayEXT returned EGL_NO_DISPLAY");
+    log_error("h_eglGetPlatformDisplayEXT: returned EGL_NO_DISPLAY (err=0x%x)",
+              eglGetError());
     C->result = 0;
-#ifdef DEBUG_VERBOSE
-    log_console("h_eglGetPlatformDisplayEXT: END (result=0)");
-#endif
     return;
   }
 
@@ -175,7 +159,7 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
       TABLE_ALLOC(egl_displays, EGL_BRIDGE_MAX_DISPLAYS, real, C->client_pid);
   if (!idx)
   {
-    log_error("  WARNING: display table full, reusing slot 1");
+    log_error("h_eglGetPlatformDisplayEXT: display table full, reusing slot 1");
     egl_displays[DEFAULT_EGL_IDX].handle = real;
     idx = 1;
   }
@@ -184,6 +168,7 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
   log_console("  assigned index=%u for egl_displays real=%p", idx,
               (void *)real);
 #endif
+
   C->result = idx;
 
 #ifdef DEBUG_VERBOSE
@@ -334,7 +319,7 @@ void h_eglQueryString(BridgeCtrl *C, uint8_t *D)
   if (di == 0 || DISP(di) == EGL_NO_DISPLAY)
   {
     C->result = 0;
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_EGL_GETPROC
     log_console("h_eglQueryString: di=%u DISP(di)=%d name=0x%04x -> no display",
                 di, DISP(di), name);
 #endif
@@ -373,7 +358,7 @@ void h_eglGetConfigs(BridgeCtrl *C, uint8_t *D)
   uint32_t di = ar_u32(&r);
   EGLint cfg_sz = ar_i32(&r);
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("h_eglGetConfigs: di: %d cfg_sz: %d", di, cfg_sz);
 #endif
 
@@ -422,10 +407,11 @@ void h_eglChooseConfig(BridgeCtrl *C, uint8_t *D)
   AR(r);
 
   uint32_t di = ar_u32(&r);
-  EGLint cfg_sz = ar_i32(&r);
   uint32_t attr_sz = ar_u32(&r);
+  uint32_t has_configs = ar_u32(&r);
+  EGLint cfg_sz = ar_i32(&r);
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("h_eglChooseConfig: BEGIN");
   log_console("  di      = %u", di);
   log_console("  cfg_sz  = %d", cfg_sz);
@@ -434,7 +420,7 @@ void h_eglChooseConfig(BridgeCtrl *C, uint8_t *D)
 
   const EGLint *attr = attr_sz ? (const EGLint *)dp(C->data_offset) : NULL;
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   if (attr)
   {
     log_console("  attributes:");
@@ -451,60 +437,63 @@ void h_eglChooseConfig(BridgeCtrl *C, uint8_t *D)
   EGLConfig tmp[EGL_BRIDGE_MAX_CONFIGS];
   EGLint num = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("  calling eglChooseConfig(dpy=%p, attr=%p, max=%d)", DISP(di),
               attr, cfg_sz);
 #endif
 
   EGLBoolean ok = eglChooseConfig(
-      DISP(di), attr, tmp,
+      DISP(di), attr, has_configs ? tmp : NULL,
       (cfg_sz < EGL_BRIDGE_MAX_CONFIGS ? cfg_sz : EGL_BRIDGE_MAX_CONFIGS),
       &num);
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("  eglChooseConfig returned ok=%d num=%d", ok, num);
 #endif
 
   uint32_t *out = (uint32_t *)dp(C->data2_offset);
 
-  for (EGLint i = 0; i < num; i++)
+  if (has_configs && out)
   {
-    uint32_t ci = 0;
-
-    for (uint32_t j = 1; j <= EGL_BRIDGE_MAX_CONFIGS; j++)
+    for (EGLint i = 0; i < num; i++)
     {
-      if (egl_configs[j].handle == tmp[i])
+      uint32_t ci = 0;
+
+      for (uint32_t j = 1; j <= EGL_BRIDGE_MAX_CONFIGS; j++)
       {
-        ci = j;
-        break;
+        if (egl_configs[j].handle == tmp[i])
+        {
+          ci = j;
+          break;
+        }
       }
-    }
 
-    if (!ci)
-    {
-      ci = TABLE_ALLOC(egl_configs, EGL_BRIDGE_MAX_CONFIGS, tmp[i],
-                       C->client_pid);
-#ifdef DEBUG
-      log_console("  new config index allocated: %u for %p", ci, tmp[i]);
+      if (!ci)
+      {
+        ci = TABLE_ALLOC(egl_configs, EGL_BRIDGE_MAX_CONFIGS, tmp[i],
+                         C->client_pid);
+#ifdef DEBUG_EGL_GETPROC
+        log_console("  new config index allocated: %u for %p", ci, tmp[i]);
 #endif
-    }
-    else
-    {
-#ifdef DEBUG
-      log_console("  existing config index %u for %p", ci, tmp[i]);
+      }
+      else
+      {
+#ifdef DEBUG_EGL_GETPROC
+        log_console("  existing config index %u for %p", ci, tmp[i]);
 #endif
-    }
+      }
 
-    out[i] = ci;
+      out[i] = ci;
+    }
   }
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("  setting C->result = %u", (uint32_t)num);
 #endif
 
-  C->result = (uint64_t)(uint32_t)num;
+  C->result = ((uint64_t)(uint32_t)num) | ((uint64_t)(uint32_t)ok << 32);
 
-#ifdef DEBUG
+#ifdef DEBUG_EGL_GETPROC
   log_console("h_eglChooseConfig: END");
 #endif
   (void)D;
@@ -513,13 +502,44 @@ void h_eglChooseConfig(BridgeCtrl *C, uint8_t *D)
 
 void h_eglGetConfigAttrib(BridgeCtrl *C, uint8_t *D)
 {
+#ifdef DEBUG_EGL_GETPROC
+  log_console("[PROXY] h_eglGetConfigAttrib ENTER");
+#endif
+
   AR(r);
+
   uint32_t di = ar_u32(&r);
   uint32_t ci = ar_u32(&r);
   EGLint attr = ar_i32(&r);
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("[PROXY] h_eglGetConfigAttrib DISP=%u CFG=%u attr=%d", di, ci,
+              attr);
+#endif
+
   EGLint val = 0;
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("[PROXY] h_eglGetConfigAttrib calling eglGetConfigAttrib(dpy=%p, "
+              "cfg=%p, attr=%d)",
+              DISP(di), CFG(ci), attr);
+#endif
+
   EGLBoolean ok = eglGetConfigAttrib(DISP(di), CFG(ci), attr, &val);
-  C->result = (uint64_t)(int64_t)val;
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console(
+      "[PROXY] h_eglGetConfigAttrib eglGetConfigAttrib returned ok=%d val=%d",
+      ok, val);
+#endif
+
+  C->result = ((uint64_t)(uint32_t)val) | ((uint64_t)(uint32_t)ok << 32);
+
+#ifdef DEBUG_EGL_GETPROC
+  log_console("[PROXY] h_eglGetConfigAttrib EXIT result=%llu",
+              (unsigned long long)C->result);
+#endif
+
   (void)ok;
   (void)D;
 }
@@ -920,6 +940,10 @@ void h_eglQueryContext(BridgeCtrl *C, uint8_t *D)
 
 void h_eglSwapBuffers(BridgeCtrl *C, uint8_t *D)
 {
+#ifdef DEBUG_VERBOSE
+  log_console("h_eglSwapBuffers");
+#endif
+
   AR(r);
   uint32_t di = ar_u32(&r);
   uint32_t si = ar_u32(&r);

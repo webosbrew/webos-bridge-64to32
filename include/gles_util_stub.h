@@ -490,6 +490,9 @@ extern BufferRangeCacheEntry g_bufrange_cache[MAX_CONTEXTS]
 
 static inline void shadow_state_init(StubShadowState *s)
 {
+#ifdef DEBUG
+  log_console("shadow_state_init: ctx=%u", g_stub_current_ctx);
+#endif
   memset(s, 0, sizeof(*s));
 
   s->active_texture = GL_TEXTURE0;
@@ -518,6 +521,9 @@ static inline void shadow_state_init(StubShadowState *s)
 // reset shadow state on eglCreateContext
 static inline void stub_context_state_reset(unsigned int idx)
 {
+#ifdef DEBUG
+  log_console("stub_context_state_reset: ctx=%u", idx);
+#endif
   if (idx >= MAX_CONTEXTS)
   {
     log_error("stub_context_state_reset - idx:%d > MAX_CONTEXTS", idx);
@@ -536,12 +542,20 @@ static inline StubShadowState *shadow_state_for_current_ctx(void)
 {
   if (g_stub_new_ctx > 0)
   {
+#ifdef DEBUG
+    log_console("shadow_state_for_current_ctx: NEW g_stub_new_ctx=%u, causing "
+                "cache reset. g_stub_current_ctx=%u",
+                g_stub_new_ctx, g_stub_current_ctx);
+#endif
     stub_context_state_reset(g_stub_new_ctx);
+
+    if (g_stub_new_ctx != g_stub_current_ctx)
+      stub_context_state_reset(g_stub_current_ctx);
     g_stub_new_ctx = 0;
   }
 
   StubShadowState *s = &g_shadow_ctx[g_stub_current_ctx];
-  if (!s->initialised)
+  if (!s->initialised || g_stub_new_ctx > 0)
     shadow_state_init(s);
   return s;
 }

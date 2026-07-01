@@ -1803,6 +1803,20 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
   uintptr_t indices = ar_u64(&r);
   uint32_t is_client_ptr = ar_u32(&r);
 
+  /* Apply client attrib patches sent by stub (attrib_count=0 in EBO mode) */
+  uint32_t attrib_count = ar_u32(&r);
+  GLContextState *ctx = &g_proxy_ctx[g_current_ctx];
+  VAOState *vao = &ctx->vaos[ctx->current_vao];
+
+  for (uint32_t i = 0; i < attrib_count; i++)
+  {
+    GLuint attrib = ar_u32(&r);
+    uint32_t off = ar_u32(&r);
+    void *ptr = dp(off);
+    g_attrib_proxy_state[attrib].pointer = (uintptr_t)ptr;
+    vao->attribs[attrib].pointer = (uintptr_t)ptr;
+  }
+
   uint32_t ebo_piggyback_buffer = ar_u32(&r);
   uint32_t ebo_piggyback_offset = ar_u32(&r);
   uint32_t ebo_piggyback_length = ar_u32(&r);
@@ -1813,9 +1827,9 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
 
 #ifdef DEBUG_VERBOSE
   log_console("h_glDrawElements (tid=%ld) mode=0x%x count=%d type=0x%x idx=%p "
-              "is_client_ptr=%d g_current_ctx=%d",
-              syscall(SYS_gettid), mode, count, type, indices, is_client_ptr,
-              g_current_ctx);
+              "is_client_ptr=%d attrib_count=%u g_current_ctx=%d",
+              syscall(SYS_gettid), mode, count, type, (void *)indices,
+              is_client_ptr, attrib_count, g_current_ctx);
 #endif
 
   if (ebo_piggyback_buffer && C->data_size > 0)
@@ -1828,7 +1842,6 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
           (GLintptr)(ebo_piggyback_offset + ebo_piggyback_length) >
               maps[mi].offset + maps[mi].length)
         break;
-
       uint8_t *dst = (uint8_t *)maps[mi].real_ptr +
                      ((GLintptr)ebo_piggyback_offset - maps[mi].offset);
       memcpy(dst, dp(C->data_offset), C->data_size);
@@ -1846,7 +1859,6 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
           (GLintptr)(piggyback_offset + piggyback_length) >
               maps[mi].offset + maps[mi].length)
         break;
-
       uint8_t *dst = (uint8_t *)maps[mi].real_ptr +
                      ((GLintptr)piggyback_offset - maps[mi].offset);
       memcpy(dst, dp(C->data2_offset), C->data2_size);
@@ -1863,12 +1875,42 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
     return;
   }
 
+  /* Alt mode: rebuild client-array attribs with patched dp() pointers,
+   * then draw with bridge-data index array. */
 #ifdef DEBUG_VERBOSE
   log_console("h_glDrawElements: alt mode");
 #endif
 
+  GLint prev_array_buffer = 0;
+  glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prev_array_buffer);
+  bool restoreArrayBuffer = false;
+
+  for (int i = 0; i < MAX_VERTEX_ATTRIBS; i++)
+  {
+    AttribState *a = &vao->attribs[i];
+    if (!a || !a->enabled || a->vbo != 0)
+      continue;
+
+    restoreArrayBuffer = true;
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    if (a->integer)
+      glVertexAttribIPointer(i, a->size, a->type, a->stride,
+                             (const void *)a->pointer);
+    else
+      glVertexAttribPointer(i, a->size, a->type, a->normalized, a->stride,
+                            (const void *)a->pointer);
+  }
+
   const void *local = dp(C->data_offset);
   glDrawElements(mode, count, type, local);
+
+#ifdef DEBUG_VERBOSE
+  log_console("h_glDrawElements: completed alternative mode");
+#endif
+
+  if (restoreArrayBuffer)
+    glBindBuffer(GL_ARRAY_BUFFER, prev_array_buffer);
 
   (void)D;
 }
