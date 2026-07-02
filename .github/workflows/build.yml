@@ -19,6 +19,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install dependencies
       run: |
@@ -309,6 +311,16 @@ jobs:
           $SRC/libSDL2-2.0.so.0.3000.12 \
           $DST/
 
+    - name: Determine latest tag
+      if: github.ref_type != 'tag'
+      run: |
+        git fetch --tags
+        LATEST_TAG="$(git describe --tags --abbrev=0)"
+        echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+        VERSION="${LATEST_TAG#v}"
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Using latest tag: $LATEST_TAG (version: $VERSION)"
+
     - name: Inject version into appinfo.json
       if: github.ref_type == 'tag'
       run: |
@@ -316,6 +328,11 @@ jobs:
         VERSION=${TAG#v}
         echo "Using version: $VERSION"
         sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" dist/ipk/appinfo.json
+
+    - name: Inject version into appinfo.json (non-tag)
+      if: github.ref_type != 'tag'
+      run: |
+        sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" dist/ipk/appinfo.json
 
     - name: Build IPK
       run: |
