@@ -5,6 +5,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#undef LOG_PREFIX
 #define LOG_PREFIX "[proxy/wl]"
 
 extern const struct wl_interface wl_surface_interface;

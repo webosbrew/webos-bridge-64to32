@@ -18,6 +18,8 @@
  *
  */
 
+#define _GNU_SOURCE
+
 #include <GLES3/gl32.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -298,8 +300,9 @@ EGLAPI const char *EGLAPIENTRY eglQueryString(EGLDisplay dpy, EGLint name)
   }
 
   /* Cache valid non-empty result */
-  strncpy(cache[di][ni], src, BRIDGE_RESULT_SIZE - 1);
-  cache[di][ni][BRIDGE_RESULT_SIZE - 1] = '\0';
+  size_t len = strnlen(src, BRIDGE_RESULT_SIZE - 1);
+  memcpy(cache[di][ni], src, len);
+  cache[di][ni][len] = '\0';
   valid[di][ni] = 1;
 
 #ifdef DEBUG_EGL_GETPROC

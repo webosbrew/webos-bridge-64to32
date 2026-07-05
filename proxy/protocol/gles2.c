@@ -568,8 +568,10 @@ void h_glDeleteFramebuffers(BridgeCtrl *C, uint8_t *D)
   glDeleteFramebuffers(n, fbs);
 }
 
+#ifdef DEBUG_VERBOSE
 static GLuint current_draw_fb = 0;
 static GLuint current_read_fb = 0;
+#endif
 
 void h_glBindFramebuffer(BridgeCtrl *C, uint8_t *D)
 {
@@ -1791,6 +1793,8 @@ void h_glDrawArrays(BridgeCtrl *C, uint8_t *D)
 
   if (restoreArrayBuffer)
     glBindBuffer(GL_ARRAY_BUFFER, prev_array_buffer);
+
+  (void)D;
 }
 
 void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
@@ -2177,6 +2181,7 @@ void h_glGetFloatv(BridgeCtrl *C, uint8_t *D)
 
 void h_glGetIntegerv(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum pname = ar_u32(&r);

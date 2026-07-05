@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 
+#undef LOG_PREFIX
 #define LOG_PREFIX "[proxy/wl_egl]"
 
 struct wl_egl_window *proxy_wl_egl_windows[MAX_WL_EGL_WINDOWS];

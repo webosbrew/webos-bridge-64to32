@@ -41,7 +41,7 @@ static inline void atomic_write_line(const char *buf, size_t len)
   n = snprintf(out, sizeof(out), "%09llu ", g_log_counter++);
 
   // Append the original message
-  if (n < sizeof(out))
+  if ((size_t)n < sizeof(out))
   {
     memcpy(out + n, buf, len);
     n += len;
@@ -95,6 +95,9 @@ void log_console_impl(const char *prefix, const char *fmt, ...)
   n += snprintf(buf + n, sizeof(buf) - n, "\n");
 
   atomic_write_line(buf, n);
+#else
+  (void)prefix;
+  (void)fmt;
 #endif
 }
 

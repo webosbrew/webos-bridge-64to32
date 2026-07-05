@@ -17,11 +17,6 @@
 #include "bridge_shm.h"
 #include "shared_util.h"
 
-static void *map_fd(int fd, size_t size)
-{
-  void *p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  return (p == MAP_FAILED) ? NULL : p;
-}
 /* ───────────────── SYSV ───────────────── */
 
 static BridgeShm sysv_create(key_t key, size_t size)
@@ -127,7 +122,7 @@ void shm_destroy(const char *key, BridgeShm *s)
 {
   if (!s)
   {
-    log_error("shm_destroy: key: %s - s is NULL");
+    log_error("shm_destroy: key: %s - s is NULL", key);
     return;
   }
 

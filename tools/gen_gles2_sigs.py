@@ -252,10 +252,10 @@ ProcEntry proc_table[] =
 ''')
         for idx, (name, ret, params) in enumerate(funcs):
             c.write(f'''
-    {{"{name}", dispatch_{name}, {idx}}},
+    {{"{name}", dispatch_{name}, {idx}, 0}},
 ''')
         c.write('''
-    {NULL, NULL, 0}
+    {NULL, NULL, 0, 0}
 };
 
 ProcEntry *find_proc(const char *name)

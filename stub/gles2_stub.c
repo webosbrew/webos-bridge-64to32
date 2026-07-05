@@ -3351,8 +3351,7 @@ GL_APICALL const GLubyte *GL_APIENTRY glGetString(GLenum name)
 
   if (idx >= 0)
   {
-    strncpy(cache[idx], src, BRIDGE_RESULT_SIZE - 1);
-    cache[idx][BRIDGE_RESULT_SIZE - 1] = '\0';
+    snprintf(cache[idx], BRIDGE_RESULT_SIZE, "%s", src);
     cached[idx] = 1;
 
 #ifdef DEBUG_GL_GETSTRING

@@ -179,8 +179,8 @@ static {ret} dispatch_{name}({", ".join(sig) if sig else "void"})
 
         c.write("\nEGLProcEntry egl_proc_table[] = {\n")
         for idx, (name, _, _) in enumerate(funcs):
-            c.write(f'    {{"{name}", dispatch_{name}, {idx}}},\n')
-        c.write("    {NULL, NULL, 0}\n};\n")
+            c.write(f'    {{"{name}", dispatch_{name}, {idx}, 0}},\n')
+        c.write("    {NULL, NULL, 0, 0}\n};\n")
 
         c.write(r'''
 EGLProcEntry *egl_find_proc(const char *name)

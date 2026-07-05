@@ -505,6 +505,7 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
 
 void h_glUnmapBuffer(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum target = ar_u32(&r);
@@ -641,6 +642,7 @@ void h_glTexStorage2D(BridgeCtrl *C, uint8_t *D)
 
 void h_glFenceSync(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum condition = ar_u32(&r);
@@ -654,6 +656,7 @@ void h_glFenceSync(BridgeCtrl *C, uint8_t *D)
 
 void h_glClientWaitSync(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   uint32_t id = ar_u32(&r);
@@ -666,6 +669,7 @@ void h_glClientWaitSync(BridgeCtrl *C, uint8_t *D)
 
 void h_glDeleteSync(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   uint32_t id = ar_u32(&r);
@@ -724,6 +728,7 @@ void h_glDebugMessageControl(BridgeCtrl *C, uint8_t *D)
 
 void h_glFlushMappedBufferRange(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum target = ar_u32(&r);
@@ -900,6 +905,7 @@ void h_glTexSubImage3D(BridgeCtrl *C, uint8_t *D)
 
 void h_glCompressedTexImage3D(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum target = ar_u32(&r);
@@ -957,6 +963,7 @@ void h_glCompressedTexImage3D(BridgeCtrl *C, uint8_t *D)
 
 void h_glCompressedTexSubImage3D(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum target = ar_u32(&r);
@@ -1021,17 +1028,17 @@ void h_glCompressedTexSubImage3D(BridgeCtrl *C, uint8_t *D)
 
 void h_glCopyTexSubImage3D(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   glCopyTexSubImage3D(ar_u32(&r), ar_i32(&r), ar_i32(&r), ar_i32(&r),
                       ar_i32(&r), ar_i32(&r), ar_i32(&r), ar_i32(&r),
                       ar_i32(&r));
-
-  (void)D;
 }
 
 void h_glTexStorage3D(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum target = ar_u32(&r);
@@ -1765,6 +1772,7 @@ void h_glIsSampler(BridgeCtrl *C, uint8_t *D)
 
 void h_glIsSync(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   uint32_t id = ar_u32(&r);
@@ -1775,6 +1783,7 @@ void h_glIsSync(BridgeCtrl *C, uint8_t *D)
 
 void h_glWaitSync(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   uint32_t id = ar_u32(&r);
@@ -1787,6 +1796,7 @@ void h_glWaitSync(BridgeCtrl *C, uint8_t *D)
 
 void h_glGetSynciv(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   uint32_t id = ar_u32(&r);
@@ -2564,6 +2574,7 @@ void h_glTexStorage3DMultisample(BridgeCtrl *C, uint8_t *D)
 
 void h_glDrawElementsBaseVertex(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum mode = ar_u32(&r);
@@ -3334,6 +3345,7 @@ void h_glGetProgramInterfaceiv(BridgeCtrl *C, uint8_t *D)
 
 void h_glGetProgramResourceIndex(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
   GLuint program = ar_u32(&r);
   GLenum iface = ar_u32(&r);
@@ -3403,6 +3415,7 @@ void h_glGetProgramResourceiv(BridgeCtrl *C, uint8_t *D)
 
 void h_glGetProgramResourceLocation(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
   GLuint program = ar_u32(&r);
   GLenum iface = ar_u32(&r);
@@ -3436,6 +3449,7 @@ void h_glActiveShaderProgram(BridgeCtrl *C, uint8_t *D)
 
 void h_glCreateShaderProgramv(BridgeCtrl *C, uint8_t *D)
 {
+  (void)D;
   AR(r);
 
   GLenum type = ar_u32(&r);
