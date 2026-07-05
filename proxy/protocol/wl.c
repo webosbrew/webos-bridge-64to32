@@ -1,5 +1,10 @@
 #include "../proxy.h"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
 #define LOG_PREFIX "[proxy/wl]"
 
 extern const struct wl_interface wl_surface_interface;
@@ -264,37 +269,66 @@ static uint32_t g_input_evt_count = 0;
 static struct wl_seat *proxy_wl_seat = NULL;
 static struct wl_keyboard *proxy_wl_keyboard = NULL;
 
-static void _kbd_noop_keymap(void *d, struct wl_keyboard *k, uint32_t fmt,
-                             int32_t fd, uint32_t sz)
+/* Stored real keymap from compositor */
+static char *g_keymap_string = NULL;
+static uint32_t g_keymap_size = 0;
+static uint32_t g_keymap_format = 0;
+static int g_keyboard_entered = 0;
+
+static void _kbd_keymap(void *d, struct wl_keyboard *k, uint32_t fmt,
+                        int32_t fd, uint32_t sz)
 {
   (void)d;
   (void)k;
-  (void)fmt;
+  g_keymap_format = fmt;
+  if (fmt == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 && sz > 0)
+  {
+    void *map = mmap(NULL, sz, PROT_READ, MAP_SHARED, fd, 0);
+    if (map != MAP_FAILED)
+    {
+      free(g_keymap_string);
+      g_keymap_string = strndup((const char *)map, sz);
+      g_keymap_size = g_keymap_string ? sz : 0;
+      munmap(map, sz);
+#ifdef DEBUG_WAYLAND
+      log_console("_kbd_keymap: stored keymap fmt=%u size=%u", fmt, sz);
+#endif
+    }
+    else
+      log_error("_kbd_keymap: mmap failed: %s", strerror(errno));
+  }
   close(fd);
-  (void)sz;
 }
-static void _kbd_noop_enter(void *d, struct wl_keyboard *k, uint32_t ser,
-                            struct wl_surface *s, struct wl_array *a)
+
+static void _kbd_enter(void *d, struct wl_keyboard *k, uint32_t ser,
+                       struct wl_surface *s, struct wl_array *a)
 {
   (void)d;
   (void)k;
-  (void)ser;
-  (void)s;
   (void)a;
+#ifdef DEBUG_WAYLAND
+  log_console("kbd ENTER: keyboard=%p surface=%p serial=%u", k, s, ser);
+#endif
+  g_keyboard_entered = 1;
 }
-static void _kbd_noop_leave(void *d, struct wl_keyboard *k, uint32_t ser,
-                            struct wl_surface *s)
+
+static void _kbd_leave(void *d, struct wl_keyboard *k, uint32_t ser,
+                       struct wl_surface *s)
 {
   (void)d;
   (void)k;
-  (void)ser;
-  (void)s;
+#ifdef DEBUG_WAYLAND
+  log_console("kbd LEAVE: keyboard=%p surface=%p serial=%u", k, s, ser);
+#endif
+  g_keyboard_entered = 0;
 }
+
 static void _kbd_key(void *d, struct wl_keyboard *k, uint32_t serial,
                      uint32_t time, uint32_t key, uint32_t state)
 {
 #ifdef DEBUG_WAYLAND
-  log_console("kbd event: key=%u state=%u", key, state);
+  log_console("kbd event: k=%p key=%u state=%u g_input_evt_count=%u", k, key,
+              state, g_input_evt_count);
 #endif
   (void)d;
   (void)k;
@@ -328,9 +362,9 @@ static void _kbd_noop_repeat(void *d, struct wl_keyboard *k, int32_t rate,
 }
 
 static const struct wl_keyboard_listener _kbd_listener = {
-    .keymap = _kbd_noop_keymap,
-    .enter = _kbd_noop_enter,
-    .leave = _kbd_noop_leave,
+    .keymap = _kbd_keymap,
+    .enter = _kbd_enter,
+    .leave = _kbd_leave,
     .key = _kbd_key,
     .modifiers = _kbd_noop_mods,
     .repeat_info = _kbd_noop_repeat,
@@ -353,6 +387,7 @@ static void _seat_caps(void *d, struct wl_seat *seat, uint32_t caps)
 #endif
   }
 }
+
 static void _seat_name(void *d, struct wl_seat *s, const char *n)
 {
   (void)d;
@@ -884,7 +919,7 @@ void h_wl_surface_commit(BridgeCtrl *C, uint8_t *D)
   {
     wl_surface_commit(g_surfs[slot]);
     wl_display_flush(proxy_wl_display);
-#ifdef DEBUG_WAYLAND
+#ifdef DEBUG_WAYLAND_VERBOSE
     log_console("h_wl_surface_commit: slot=%u shell surf=%p owner=%d", slot,
                 g_surfs[slot], g_surfs_owner[slot]);
 #endif
@@ -971,8 +1006,9 @@ void h_wl_roundtrip(BridgeCtrl *C, uint8_t *D)
   /* ── keyboard events ── */
   rb[0] = g_input_evt_count;
 
-#ifdef DEBUG_WAYLAND_VERBOSE
-  log_console("h_wl_roundtrip: g_input_evt_count=%u", g_input_evt_count);
+#ifdef DEBUG_WAYLAND
+  if (g_input_evt_count > 0)
+    log_console("h_wl_roundtrip: g_input_evt_count=%u", g_input_evt_count);
 #endif
 
   for (uint32_t i = 0; i < g_input_evt_count; i++)
@@ -1013,4 +1049,27 @@ void h_wl_flush(BridgeCtrl *C, uint8_t *D)
     wl_display_flush(proxy_wl_display);
   C->result = 0;
   (void)D;
+}
+
+void h_wl_get_keymap(BridgeCtrl *C, uint8_t *D)
+{
+  if (g_keymap_string && g_keymap_size > 0)
+  {
+    memcpy(D, g_keymap_string, g_keymap_size);
+    C->data_offset = 0;
+    C->data_size = g_keymap_size;
+    C->result = g_keymap_format;
+#ifdef DEBUG_WAYLAND
+    log_console("h_wl_get_keymap: sending keymap size=%u", g_keymap_size);
+#endif
+  }
+  else
+  {
+    C->data_offset = 0;
+    C->data_size = 0;
+    C->result = 0;
+#ifdef DEBUG_WAYLAND
+    log_console("h_wl_get_keymap: no keymap yet");
+#endif
+  }
 }

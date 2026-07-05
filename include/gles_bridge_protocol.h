@@ -502,6 +502,8 @@ typedef enum
   OP_wl_proxy_destroy, /* proxy: destroy any tracked proxy       */
   OP_wl_webos_shell_surface_set_state, /* proxy: set_state on webos_ss[slot] */
 
+  OP_wl_get_keymap,
+
   OP_WL_MAX
 } WLBridgeOpcode;
 
@@ -1259,6 +1261,8 @@ static inline char *wl_opcode_to_string(WLBridgeOpcode op)
     return "wl_proxy_destroy";
   case OP_wl_webos_shell_surface_set_state:
     return "wl_webos_shell_surface_set_state";
+  case OP_wl_get_keymap:
+    return "wl_get_keymap";
 
   default:
     return "UNKNOWN_WL_OPCODE";

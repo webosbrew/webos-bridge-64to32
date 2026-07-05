@@ -521,6 +521,7 @@ static const HandlerFn wl_dispatch_table[OP_WL_MAX] = {
     ENTRY(OP_wl_proxy_destroy, h_wl_proxy_destroy),
     ENTRY(OP_wl_webos_shell_surface_set_state,
           h_wl_webos_shell_surface_set_state),
+    ENTRY(OP_wl_get_keymap, h_wl_get_keymap),
 };
 
 const char *get_executable_path(void)

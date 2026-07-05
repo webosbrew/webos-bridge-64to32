@@ -78,6 +78,9 @@ int text_h;
 pthread_t music_thread_id;
 static volatile int running = 1;
 
+static uint32_t g_keymap_size = 0;
+static char *g_keymap_blob = NULL;
+
 // ---------------- geometry ----------------
 static const float cube[] = {
     // front
@@ -221,6 +224,23 @@ void wl_keyboard_handle_key_webos(void *data, struct wl_keyboard *keyboard,
 static void wl_keyboard_handle_keymap(void *data, struct wl_keyboard *kbd,
                                       uint32_t format, int fd, uint32_t size)
 {
+  if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+  {
+#ifdef DEBUG_WAYLAND
+    log_console("wl_keyboard_handle_keymap: unsupported keymap format %u",
+                format);
+#endif
+    return;
+  }
+
+  free(g_keymap_blob);
+  g_keymap_blob = malloc(size);
+  g_keymap_size = size;
+
+  void *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+  memcpy(g_keymap_blob, map, size);
+  munmap(map, size);
+  close(fd);
 }
 
 static void wl_keyboard_handle_enter(void *data, struct wl_keyboard *kbd,

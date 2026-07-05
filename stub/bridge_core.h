@@ -45,6 +45,7 @@ void wl_bridge_begin(void);
 void wl_bridge_end(void);
 
 uint64_t bridge_send_call_wl(void);
+void bridge_data_read_wl(void *dst, uint32_t offset, size_t size);
 uint32_t bridge_data_write_wl(const void *src, size_t size);
 void bridge_send_void_wl(void);
 

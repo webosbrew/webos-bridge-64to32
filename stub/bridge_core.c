@@ -581,6 +581,18 @@ void wl_bridge_end(void)
 
 /* ── Data access ─────────────────────────────────── */
 
+void bridge_data_read_wl(void *dst, uint32_t offset, size_t size)
+{
+  if ((uint64_t)offset + size > GLES_BRIDGE_DATA_SIZE)
+  {
+    log_error("bridge_data_read_wl OVERFLOW: %zu > %u, offset: %u", size,
+              GLES_BRIDGE_DATA_SIZE, offset);
+    abort();
+  }
+
+  memcpy(dst, g_wl.data + offset, size);
+}
+
 uint32_t bridge_data_write_wl(const void *src, size_t size)
 {
   uint32_t off = wl_data_alloc(size);

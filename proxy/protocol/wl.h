@@ -65,3 +65,5 @@ void h_wl_flush(BridgeCtrl *C, uint8_t *D);
 
 /* ── h_wl_webos_set_state ────────────────────────────────────── */
 void h_wl_webos_shell_surface_set_state(BridgeCtrl *C, uint8_t *D);
+
+void h_wl_get_keymap(BridgeCtrl *C, uint8_t *D);

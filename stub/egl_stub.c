@@ -943,9 +943,9 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
     if ((++swap_count % 60) == 0)
       bridge_dump_backpressure_stats();
   }
-#endif
   /* Always synchronous — must block until the frame is on screen */
   log_console("eglSwapBuffers calling bridge_send_call");
+#endif
   return (EGLBoolean)BRIDGE_SEND_CALL();
 }
 
