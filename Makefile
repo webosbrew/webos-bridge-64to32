@@ -50,10 +50,14 @@ PATCHELF ?= patchelf
 
 DEBUG ?= 0
 GNU_BUILD_ID ?= 0
-HAVE_OWN_WAYLAND_CLIENT ?= 1
-HAVE_OWN_WAYLAND_EGL ?= 1
+HAVE_OWN_WAYLAND_CLIENT ?= 0
+HAVE_OWN_WAYLAND_EGL ?= 0
 WAYLAND_STUB_NAME ?= libwayland-client.so.0
 REAL_WAYLAND_LIB ?= libwayland-client-real.so.0
+
+HAVE_DMABUF        ?= 1
+DRM_DEVICE_PATH    ?= /dev/dma_buf_unified
+DMABUF_NUM_BUFFERS ?= 3
 
 # Additional debugging, disabled by default as too spammy
 DEBUG_TO_LOGFILE ?= 0
@@ -474,8 +478,44 @@ $(OUT_64)/libwayland-egl.so.1: $(WL_EGL_OBJ) $(OUT_64)/libgles_bridge_core.so
 wl: $(OUT_64)/libwayland-egl.so.1
 endif
 
+ifeq ($(HAVE_DMABUF),1)
+  ifeq ($(HAVE_OWN_WAYLAND_CLIENT),1)
+    $(error HAVE_DMABUF and HAVE_OWN_WAYLAND_CLIENT are mutually exclusive)
+  endif
+  ifeq ($(HAVE_OWN_WAYLAND_EGL),1)
+    $(error HAVE_DMABUF and HAVE_OWN_WAYLAND_EGL are mutually exclusive)
+  endif
+ 
+  _DMABUF_CFLAGS := \
+    -DHAVE_DMABUF \
+    -DDRM_DEVICE_PATH=\"$(DRM_DEVICE_PATH)\" \
+    -DDRM_DEVICE_PATH_FALLBACK=\"/dev/dri/card0\" \
+    -DDMABUF_NUM_BUFFERS=$(DMABUF_NUM_BUFFERS)
+ 
+  CFLAGS_64_BASE += $(_DMABUF_CFLAGS)
+  CFLAGS_32      += $(_DMABUF_CFLAGS)
+ 
+  PROXY_OBJ += \
+    $(OUT_32)/dmabuf_proxy.o \
+    $(OUT_32)/wl.o           \
+    $(OUT_32)/wl_egl.o
+ 
+  CORE_OBJ += $(OUT_64)/dmabuf_present.o
+ 
+  $(OUT_32)/dmabuf_proxy.o: $(PROXY_DIR)/protocol/dmabuf.c \
+                             $(PROXY_DIR)/protocol/dmabuf.h
+	$(CC_32) $(CFLAGS_32) -I$(INCLUDE_DIR) -c $< -o $@
+ 
+  $(OUT_64)/dmabuf_present.o: $(STUB_DIR)/dmabuf_present.c \
+                               $(STUB_DIR)/dmabuf_present.h
+	$(CC_64) $(CFLAGS_64_BASE) -c $< -o $@
+ 
+  wl:
+	@echo "  [wl] skipped (HAVE_DMABUF=1 - app uses real libwayland-client)"
+endif
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. gles_proxy  (armv7a)
+# 6. gles_proxy  (armv7a)
 # ─────────────────────────────────────────────────────────────────────────────
 PROXY_OBJ := \
     $(OUT_32)/proxy.o \

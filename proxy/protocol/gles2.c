@@ -10,6 +10,10 @@
 #include <unistd.h>
 #endif
 
+#ifdef HAVE_DMABUF
+#include "dmabuf.h"
+#endif
+
 AttribState g_attrib_proxy_state[MAX_VERTEX_ATTRIBS];
 GLContextState g_proxy_ctx[MAX_CONTEXTS];
 
@@ -577,16 +581,21 @@ void h_glBindFramebuffer(BridgeCtrl *C, uint8_t *D)
 {
   AR(r);
 
-#ifdef DEBUG_VERBOSE
   GLenum target = ar_u32(&r);
   GLuint fb = ar_u32(&r);
 
+#ifdef DEBUG_VERBOSE
   log_console("[h_glBindFramebuffer] BEGIN");
   log_console("    target=0x%04x fb=%u g_current_ctx=%d", target, fb,
               g_current_ctx);
 
   GLenum prev_err = glGetError();
   log_console("    prev_gl_err=0x%04x", prev_err);
+
+#ifdef HAVE_DMABUF
+  if (fb == 0)
+    fb = dmabuf_proxy_remap_fbo0();
+#endif
 
   glBindFramebuffer(target, fb);
 
@@ -643,7 +652,13 @@ void h_glBindFramebuffer(BridgeCtrl *C, uint8_t *D)
   log_console("[h_glBindFramebuffer] END");
 
 #else
-  glBindFramebuffer(ar_u32(&r), ar_u32(&r));
+
+#ifdef HAVE_DMABUF
+  if (fb == 0)
+    fb = dmabuf_proxy_remap_fbo0(); /* remap default FB - dma_buf FBO */
+#endif
+
+  glBindFramebuffer(target, fb);
 #endif
 }
 

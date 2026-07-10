@@ -39,12 +39,20 @@
 #include "gles_bridge_protocol.h"
 #include "gles_util_stub.h"
 
+#ifdef HAVE_DMABUF
+#include "dmabuf.h"
+#endif
+
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
 /* Convert an opaque EGL handle to the uint32 index we send over the wire. */
 #define H2I(h) ((uint32_t)(uintptr_t)(h))
 /* Convert an index returned by the proxy back to an opaque handle type. */
 #define I2H(T, i) ((T)(uintptr_t)(uint32_t)(i))
+
+#ifdef HAVE_DMABUF
+static struct wl_display *g_dmabuf_wl_display = NULL; /* set in eglGetDisplay */
+#endif
 
 /*
  * Size of a null-terminated EGLint attrib list in bytes, INCLUDING the
@@ -149,6 +157,11 @@ EGLAPI EGLDisplay EGLAPIENTRY eglGetDisplay(EGLNativeDisplayType display_id)
                   last_wl_display);
   }
 
+#ifdef HAVE_DMABUF
+  /* Record the real wl_display for dmabuf_present_init() */
+  g_dmabuf_wl_display = wl_dpy;
+#endif
+
   // store last active for the above fallback case
   last_wl_display = wl_dpy;
 
@@ -229,6 +242,12 @@ EGLAPI EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy)
   ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
   aw_u32(&W, H2I(dpy));
   C->args_len = W.pos;
+
+#ifdef HAVE_DMABUF
+  if (g_dmabuf_present_ready)
+    dmabuf_present_destroy();
+#endif
+
   return (EGLBoolean)BRIDGE_SEND_CALL();
 }
 
@@ -542,6 +561,68 @@ EGLAPI EGLSurface EGLAPIENTRY eglCreateWindowSurface(
     EGLDisplay display, EGLConfig config, EGLNativeWindowType native_window,
     const EGLint *attrib_list)
 {
+#ifdef HAVE_DMABUF
+  /* Extract the real wl_surface and dimensions from the wl_egl_window.
+   * Under HAVE_DMABUF the app uses the real libwayland-client/egl, so
+   * native_window is a genuine struct wl_egl_window *.               */
+  const struct wl_egl_window *ew =
+      native_window ? (const struct wl_egl_window *)(uintptr_t)native_window
+                    : NULL;
+
+  int win_width = ew ? ew->width : 1920;
+  int win_height = ew ? ew->height : 1080;
+
+  /* Tell the presentation layer which wl_surface to attach frames to */
+  if (ew && ew->surface)
+    dmabuf_present_set_surface(ew->surface, win_width, win_height);
+
+  /* Forward to proxy: sends OP_eglCreateWindowSurface with dimensions.
+   * Inside h_eglCreateWindowSurface the proxy calls dmabuf_proxy_init(),
+   * which allocates the dma_buf frames and writes metadata + fds to the
+   * fd-socket BEFORE writing the ring result.  So by the time
+   * BRIDGE_SEND_CALL() returns below, the fds are already in the socket. */
+  BRIDGE_BEGIN();
+  BridgeCtrl *C = BRIDGE_CTRL();
+  C->opcode = OP_eglCreateWindowSurface;
+  ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
+  aw_u32(&W, H2I(display));
+  aw_u32(&W, H2I(config));
+  aw_u32(&W, 0); /* win_slot: proxy ignores under HAVE_DMABUF */
+  aw_i32(&W, win_width);
+  aw_i32(&W, win_height);
+  aw_u32(&W, 0); /* attr_sz: no EGL attribs needed            */
+  C->args_len = W.pos;
+  C->data_offset = 0;
+  C->data_size = 0;
+  C->data2_offset = 0;
+  C->data2_size = 0;
+
+  uint64_t raw = BRIDGE_SEND_CALL();
+  /* raw == 1 (fake surface handle) on success, 0 on failure */
+
+  if (raw && !g_dmabuf_present_ready)
+  {
+    int fdsock = bridge_dmabuf_fd_sock();
+    if (fdsock < 0)
+    {
+      log_error("eglCreateWindowSurface: dmabuf fd-socket not ready");
+    }
+    else if (g_dmabuf_wl_display == NULL)
+    {
+      log_error("eglCreateWindowSurface: wl_display not stored "
+                "(was eglGetDisplay called?)");
+    }
+    else if (dmabuf_present_init(fdsock, g_dmabuf_wl_display) < 0)
+    {
+      log_error("eglCreateWindowSurface: dmabuf_present_init failed");
+      raw = 0;
+    }
+  }
+
+  return I2H(EGLSurface, raw);
+
+#else
+
   const struct wl_egl_window *ew =
       native_window ? (const struct wl_egl_window *)(uintptr_t)native_window
                     : NULL;
@@ -596,6 +677,8 @@ EGLAPI EGLSurface EGLAPIENTRY eglCreateWindowSurface(
   return surf;
 #else
   return I2H(EGLSurface, BRIDGE_SEND_CALL());
+#endif
+
 #endif
 }
 
@@ -928,6 +1011,35 @@ EGLAPI EGLBoolean EGLAPIENTRY eglQueryContext(EGLDisplay dpy, EGLContext ctx,
 
 EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 {
+#ifdef HAVE_DMABUF
+  if (g_dmabuf_present_ready)
+  {
+    BRIDGE_BEGIN();
+    BridgeCtrl *C = BRIDGE_CTRL();
+    setup_egl(OP_eglSwapBuffers);
+    ArgWriter W = aw_init(C->args, BRIDGE_ARGS_SIZE);
+    aw_u32(&W, H2I(dpy));
+    aw_u32(&W, H2I(surface));
+    /* Extra arg: bitmask of frames the compositor has released since the
+     * previous swap.  Proxy uses this to mark those frames FREE so it can
+     * start rendering into them again.                                   */
+    aw_u32(&W, g_dmabuf_release_mask);
+    C->args_len = W.pos;
+
+    /* proxy: glFinish current FBO, advance to next free frame, returns idx */
+    int frame_idx = (int)(uint32_t)BRIDGE_SEND_CALL();
+
+    /* Present the ready frame to the compositor via wl_surface_attach */
+    uint32_t newly_released = 0;
+    dmabuf_present_frame(frame_idx, &newly_released);
+
+    /* Accumulate for next swap (releases may trickle in across frames) */
+    g_dmabuf_release_mask = newly_released;
+
+    return EGL_TRUE;
+  }
+#endif /* HAVE_DMABUF */
+
   BRIDGE_BEGIN();
   BridgeCtrl *C = BRIDGE_CTRL();
   setup_egl(OP_eglSwapBuffers);

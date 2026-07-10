@@ -1462,3 +1462,21 @@ typedef struct
   pthread_mutex_t lock;
 
 } WLBridge;
+
+#ifdef HAVE_DMABUF
+#ifndef DMABUF_NUM_BUFFERS
+#define DMABUF_NUM_BUFFERS 3
+#endif
+
+/* Metadata for one dma_buf frame */
+typedef struct
+{
+  uint32_t width;
+  uint32_t height;
+  uint32_t format;      /* DRM fourcc: ARGB8888=0x34325241, XRGB=0x34325258 */
+  uint32_t stride;      /* bytes per row                                     */
+  uint32_t offset;      /* plane 0 offset                                    */
+  uint32_t modifier_lo; /* DRM modifier low 32 bits  (0 = LINEAR)            */
+  uint32_t modifier_hi; /* DRM modifier high 32 bits (0 = LINEAR)            */
+} DmaBufFrameInfo;
+#endif /* HAVE_DMABUF */

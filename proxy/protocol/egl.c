@@ -16,6 +16,10 @@
 #include <unistd.h>
 #endif
 
+#ifdef HAVE_DMABUF
+#include "dmabuf.h"
+#endif
+
 /* ══════════════════════════════════════════════════════════════════════════
  * EGL handle tables
  *
@@ -181,6 +185,12 @@ void h_eglGetPlatformDisplayEXT(BridgeCtrl *C, uint8_t *D)
 void h_eglGetDisplay(BridgeCtrl *C, uint8_t *D)
 {
   AR(r);
+
+#ifdef HAVE_DMABUF
+  C->result = 1;
+  return;
+#endif
+
   uint32_t wl_fd = ar_u32(&r); /* stub's eventfd */
   uint32_t watermark = ar_u32(&r);
   (void)wl_fd;
@@ -562,6 +572,23 @@ void h_eglCreateWindowSurface(BridgeCtrl *C, uint8_t *D)
               display, config, win_slot, width, height);
 #endif
 
+#ifdef HAVE_DMABUF
+  if (dmabuf_proxy_init((uint32_t)width, (uint32_t)height) < 0)
+  {
+    log_error("h_eglCreateWindowSurface: dmabuf_proxy_init failed");
+    C->result = 0;
+    (void)D;
+    return;
+  }
+
+  /* Return a fake surface handle (1) */
+  egl_surfaces[1].handle = (void *)(uintptr_t)1;
+  egl_surfaces[1].owner_pid = C->client_pid;
+  C->result = 1;
+
+  return;
+#endif
+
   if (win_slot >= MAX_WL_EGL_WINDOWS)
   {
     log_error(
@@ -833,6 +860,39 @@ void h_eglMakeCurrent(BridgeCtrl *C, uint8_t *D)
               draw_real, read_real, ctx_real);
 #endif
 
+#ifdef HAVE_DMABUF
+  EGLDisplay dpy = egl_displays[1].handle;
+
+  if (context == 0)
+  {
+    /* Deactivate */
+    eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    C->result = EGL_TRUE;
+    (void)D;
+    return;
+  }
+
+  *context index — we only ever have one(slot 1) * / EGLContext ctx =
+      (EGLContext)egl_contexts[1].handle;
+
+  EGLBoolean ok = eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx);
+
+  if (!ok)
+  {
+    log_error("h_eglMakeCurrent (dmabuf): surfaceless failed 0x%x",
+              eglGetError());
+  }
+
+  g_current_ctx = context;
+
+  /* Bind the current dma_buf FBO so the first draw goes to the right frame */
+  if (ok)
+    dmabuf_proxy_bind_current_fbo();
+
+  C->result = ok;
+  return;
+#endif
+
   C->result =
       eglMakeCurrent(DISP(display), SURF(draw), SURF(read), CTX(context));
   (void)D;
@@ -947,6 +1007,17 @@ void h_eglSwapBuffers(BridgeCtrl *C, uint8_t *D)
   AR(r);
   uint32_t di = ar_u32(&r);
   uint32_t si = ar_u32(&r);
+
+#ifdef HAVE_DMABUF
+  uint32_t released_mask = ar_u32(&r); /* frames the compositor released */
+
+  /* glFinish + mark current frame READY + advance g_dmabuf_current */
+  int ready_frame = dmabuf_proxy_swap(released_mask);
+
+  /* Return the frame index the stub should present via wl_surface_attach */
+  C->result = (uint64_t)(uint32_t)ready_frame;
+  return;
+#endif
 
 #ifdef DEBUG_VERBOSE
   log_console("h_eglSwapBuffers (tid=%ld) di=%d si=%d display=%p egl surf=%p "

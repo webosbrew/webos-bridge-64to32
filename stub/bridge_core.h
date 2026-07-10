@@ -61,3 +61,7 @@ extern unsigned int g_stub_current_ctx;
 #ifdef DEBUG_OPCODES
 void bridge_dump_backpressure_stats(void);
 #endif
+
+#ifdef HAVE_DMABUF
+int bridge_dmabuf_fd_sock(void);
+#endif

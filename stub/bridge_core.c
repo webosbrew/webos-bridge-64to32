@@ -17,7 +17,10 @@
 #include <string.h>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -90,6 +93,16 @@ void bridge_dump_backpressure_stats(void)
              "data_full_stalls=%llu ===",
              (unsigned long long)g_ring_full_stalls,
              (unsigned long long)g_data_full_stalls);
+}
+#endif
+
+#ifdef HAVE_DMABUF
+/* Unix socket pair used to pass dma_buf fds from proxy to stub */
+static int g_dmabuf_fdsock[2] = {-1, -1};
+
+int bridge_dmabuf_fd_sock(void)
+{
+  return g_dmabuf_fdsock[0];
 }
 #endif
 
@@ -194,6 +207,14 @@ static void bridge_cleanup(void)
   shm_destroy(GLES_BRIDGE_WL_CTRL_SHM, &g_ctrl_wl_shm);
   shm_destroy(GLES_BRIDGE_WL_DATA_SHM, &g_data_wl_shm);
 
+#ifdef HAVE_DMABUF
+  if (g_dmabuf_fdsock[0] >= 0)
+  {
+    close(g_dmabuf_fdsock[0]);
+    g_dmabuf_fdsock[0] = -1;
+  }
+#endif
+
   log_console("cleanup done");
 }
 
@@ -243,14 +264,31 @@ static int start_proxy(void)
   if (pid == 0)
   {
     /* Child — will become the proxy process */
+#ifdef HAVE_DMABUF
+    char dmabuf_sock_str[32];
+    snprintf(dmabuf_sock_str, sizeof(dmabuf_sock_str), "%d",
+             g_dmabuf_fdsock[1]);
+
+    execl(bin, bin, req_str, resp_str, req_wl_str, resp_wl_str, appId,
+          dmabuf_sock_str, /* argv[6]: fd-socket for sending dma_buf fds */
+          NULL);
+#else
     execl(bin, bin, req_str, resp_str, req_wl_str, resp_wl_str, appId, NULL);
+#endif
     log_console("execl(%s) FAILED: %s", bin, strerror(errno));
     _exit(1);
   }
 
   g_proxy_pid = pid;
   g_ring->proxy_pid = (int32_t)pid;
+
+#ifdef HAVE_DMABUF
+  close(g_dmabuf_fdsock[1]); /* parent keeps [0]; proxy holds [1] */
+  g_dmabuf_fdsock[1] = -1;
+#endif
+
   log_console("proxy started, pid=%d", (int)pid);
+
   return 0;
 }
 
@@ -320,9 +358,21 @@ static void bridge_init(void)
   }
   log_console("req_wl_efd=%d resp_wl_efd=%d", req_wl_efd, resp_wl_efd);
 
+#ifdef HAVE_DMABUF
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, g_dmabuf_fdsock) < 0)
+  {
+    log_error("bridge_init: socketpair dmabuf: %s", strerror(errno));
+    abort();
+  }
+  log_console("dmabuf fd socket: stub=%d proxy=%d", g_dmabuf_fdsock[0],
+              g_dmabuf_fdsock[1]);
+#endif
+
+#ifdef HAVE_OWN_WAYLAND_CLIENT
   wl_bridge_init();
 
   log_console("bridge_init() - setting up bridge_cleanup");
+#endif
 
   /* Register cleanup so SHM and proxy are torn down on normal exit */
   if (atexit(bridge_cleanup) != 0)

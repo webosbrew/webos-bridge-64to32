@@ -23,6 +23,10 @@
 
 #include "proxy.h"
 
+#ifdef HAVE_DMABUF
+#include "protocol/dmabuf.h"
+#endif
+
 static int req_efd = -1;
 static int resp_efd = -1;
 
@@ -59,6 +63,10 @@ static uint64_t g_opcode_call_count[OP_MAX];
 static uint64_t g_opcode_count_prev[OP_MAX];
 static uint64_t g_opcode_call_count_prev[OP_MAX];
 static uint64_t g_frame_count = 0;
+#endif
+
+#ifdef HAVE_DMABUF
+static int g_dmabuf_fd_sock = -1;
 #endif
 
 /* Sync */
@@ -562,6 +570,14 @@ void at_exit_proxy_cleanup()
   shm_destroy(GLES_BRIDGE_WL_CTRL_SHM, &wl_ctrl_shm);
   shm_destroy(GLES_BRIDGE_WL_DATA_SHM, &wl_data_shm);
 
+#ifdef HAVE_DMABUF
+  if (g_dmabuf_fd_sock >= 0)
+  {
+    close(g_dmabuf_fd_sock);
+    g_dmabuf_fd_sock = -1;
+  }
+#endif
+
   close_wl_thread();
 }
 
@@ -656,6 +672,103 @@ int setup_wl_thread(void)
   return 0;
 }
 
+#ifdef HAVE_DMABUF
+int setup_dmabuf(int argc, char **argv)
+{
+  /* ── Parse extra argv[6]: the fd-socket for sending dma_buf fds ── */
+  if (argc > 6)
+    g_dmabuf_fd_sock = atoi(argv[6]);
+
+  if (g_dmabuf_fd_sock < 0)
+  {
+    log_error("HAVE_DMABUF: no fd-socket in argv[6]");
+    return 1;
+  }
+
+  proxy_wl_display = wl_display_connect(NULL);
+  if (!proxy_wl_display)
+  {
+    log_error("HAVE_DMABUF: wl_display_connect failed");
+    return 1;
+  }
+
+  log_console("HAVE_DMABUF: wl_display=%p fd=%d", proxy_wl_display,
+              wl_display_get_fd(proxy_wl_display));
+
+  /* ── EGL display + initialise ── */
+  EGLDisplay _dpy = eglGetDisplay((EGLNativeDisplayType)proxy_wl_display);
+  if (_dpy == EGL_NO_DISPLAY || !eglInitialize(_dpy, NULL, NULL))
+  {
+    log_error("HAVE_DMABUF: eglInitialize failed (0x%x)", eglGetError());
+    return 1;
+  }
+
+  eglBindAPI(EGL_OPENGL_ES_API);
+
+  /* ── Choose a config (pbuffer-capable for robustness; surfaceless later) */
+  static const EGLint _cfg_attr[] = {EGL_RENDERABLE_TYPE,
+                                     EGL_OPENGL_ES3_BIT,
+                                     EGL_SURFACE_TYPE,
+                                     EGL_PBUFFER_BIT,
+                                     EGL_RED_SIZE,
+                                     8,
+                                     EGL_GREEN_SIZE,
+                                     8,
+                                     EGL_BLUE_SIZE,
+                                     8,
+                                     EGL_ALPHA_SIZE,
+                                     8,
+                                     EGL_NONE};
+  EGLConfig _cfg = NULL;
+  EGLint _n = 0;
+
+  if (!eglChooseConfig(_dpy, _cfg_attr, &_cfg, 1, &_n) || _n < 1)
+  {
+    log_error("HAVE_DMABUF: eglChooseConfig failed (0x%x)", eglGetError());
+    return 1;
+  }
+
+  /* ── GLES 3 context ── */
+  static const EGLint _ctx_attr[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+  EGLContext _ctx = eglCreateContext(_dpy, _cfg, EGL_NO_CONTEXT, _ctx_attr);
+
+  if (_ctx == EGL_NO_CONTEXT)
+  {
+    log_error("HAVE_DMABUF: eglCreateContext failed (0x%x)", eglGetError());
+    return 1;
+  }
+
+  /* ── Activate surfacelessly (EGL_KHR_surfaceless_context) ── */
+  if (!eglMakeCurrent(_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, _ctx))
+  {
+    log_error("HAVE_DMABUF: surfaceless eglMakeCurrent failed (0x%x)",
+              eglGetError());
+    return 1;
+  }
+
+  log_always("HAVE_DMABUF: GL_VERSION = %s", glGetString(GL_VERSION));
+  log_always("HAVE_DMABUF: GL_RENDERER = %s", glGetString(GL_RENDERER));
+
+  /* ── Pre-populate EGL handle table slot 1 ── */
+  egl_tables_init();
+  egl_displays[1].handle = _dpy;
+  egl_displays[1].initialized = 1;
+  egl_displays[1].major = 1;
+  egl_displays[1].minor = 5;
+  egl_configs[1].handle = _cfg;
+  egl_contexts[1].handle = _ctx;
+  g_current_ctx = 1;
+
+  /* ── Store EGL state; actual dma_buf alloc deferred to
+   *    h_eglCreateWindowSurface (when width/height are known) ── */
+  dmabuf_proxy_store_egl(_dpy, _cfg, g_dmabuf_fd_sock);
+
+  log_console("HAVE_DMABUF: surfaceless EGL context ready");
+
+  return 0;
+}
+#endif
+
 /* ══════════════════════════════════════════════════════════════════════════
  * main
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -701,11 +814,15 @@ int main(int argc, char **argv)
 
   egl_tables_init();
 
+#ifdef HAVE_DMABUF
+  setup_dmabuf(argc, argv);
+#else
   if (setup_bridge_wl() == 1)
     return 1;
 
   if (setup_wl_thread() == 1)
     return 1;
+#endif
 
   // For testing output:
   // proxy_wayland_init();
