@@ -13,6 +13,7 @@
 #include "gles_bridge_protocol.h"
 
 StubMapEntry stub_maps[MAX_MAPS];
+static uint32_t g_active_stub_map_count = 0;
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 static void setup_scalar(GLBridgeOpcode op)
@@ -401,6 +402,8 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
       stub_maps[i].target = 0;
       stub_maps[i].id = 0;
       stub_maps[i].access = 0;
+
+      g_active_stub_map_count--;
     }
   }
 
@@ -415,6 +418,8 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
     // glUnmapBuffer free it before overwriting
     free(stub_maps[map_id].ptr);
     stub_maps[map_id].ptr = NULL;
+
+    g_active_stub_map_count--;
   }
 
   stub_maps[map_id].id = map_id;
@@ -424,6 +429,8 @@ GL_APICALL void *GL_APIENTRY glMapBufferRange(GLenum target, GLintptr offset,
   stub_maps[map_id].buffer = buf;
   stub_maps[map_id].target = target;
   stub_maps[map_id].access = access;
+
+  g_active_stub_map_count++;
 
   return local;
 }
@@ -694,6 +701,7 @@ GL_APICALL GLboolean GL_APIENTRY glUnmapBuffer(GLenum target)
       log_console("glUnmapBuffer: free m->ptr: %p", m->ptr);
 #endif
       free(m->ptr);
+      g_active_stub_map_count--;
     }
     m->ptr = NULL;
     m->length = 0;
@@ -1765,32 +1773,35 @@ GL_APICALL void GL_APIENTRY glBindBufferRange(GLenum target, GLuint index,
 
   /* If this buffer has an active persistent write map (no
    * GL_MAP_FLUSH_EXPLICIT_BIT), the GPU mapped range is never updated via
-   * unmap/flush.  Piggyback the sub-range the shader will actually read so the
+   * unmap/flush).  Piggyback the sub-range the shader will actually read so the
    * proxy can copy it into the real GPU-mapped buffer before calling
    * glBindBufferRange. */
   C->data_offset = 0;
   C->data_size = 0;
-  for (uint32_t i = 1; i < MAX_MAPS; i++)
+  if (g_active_stub_map_count > 0)
   {
-    StubMapEntry *m = &stub_maps[i];
-    if (!m->ptr || m->buffer != buffer)
-      continue;
-    if (m->access & GL_MAP_FLUSH_EXPLICIT_BIT)
-      break; /* explicit-flush maps handle their own updates */
-    if (!(m->access & GL_MAP_WRITE_BIT))
-      break;
-    /* offset is buffer-relative; m->offset is the map start */
-    GLintptr map_start = m->offset;
-    GLintptr range_end = offset + size;
-    GLintptr map_end = map_start + (GLintptr)m->length;
-    if (offset >= map_start && range_end <= map_end)
+    for (uint32_t i = 1; i < MAX_MAPS; i++)
     {
-      /* Copy just [offset, offset+size) from the stub's malloc'd buffer */
-      uint8_t *src = (uint8_t *)m->ptr + (offset - map_start);
-      C->data_offset = bridge_data_write(src, (size_t)size);
-      C->data_size = (uint32_t)size;
+      StubMapEntry *m = &stub_maps[i];
+      if (!m->ptr || m->buffer != buffer)
+        continue;
+      if (m->access & GL_MAP_FLUSH_EXPLICIT_BIT)
+        break; /* explicit-flush maps handle their own updates */
+      if (!(m->access & GL_MAP_WRITE_BIT))
+        break;
+      /* offset is buffer-relative; m->offset is the map start */
+      GLintptr map_start = m->offset;
+      GLintptr range_end = offset + size;
+      GLintptr map_end = map_start + (GLintptr)m->length;
+      if (offset >= map_start && range_end <= map_end)
+      {
+        /* Copy just [offset, offset+size) from the stub's malloc'd buffer */
+        uint8_t *src = (uint8_t *)m->ptr + (offset - map_start);
+        C->data_offset = bridge_data_write(src, (size_t)size);
+        C->data_size = (uint32_t)size;
+      }
+      break;
     }
-    break;
   }
 
   BRIDGE_SEND_VOID();

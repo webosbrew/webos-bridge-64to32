@@ -37,6 +37,10 @@ static WLBridge g_wl;
 uint32_t last_opc = -1;
 #endif
 
+#ifdef DEBUG_OPCODES
+static uint64_t g_wl_calls_since_roundtrip = 0;
+#endif
+
 /* ── Shared memory ───────────────────────────────────────────────────────── */
 static BridgeRing *ring = NULL;
 uint8_t *data = NULL;
@@ -59,6 +63,7 @@ static uint64_t g_opcode_call_count[OP_MAX];
 static uint64_t g_opcode_count_prev[OP_MAX];
 static uint64_t g_opcode_call_count_prev[OP_MAX];
 static uint64_t g_frame_count = 0;
+static uint64_t g_calls_since_swap = 0;
 #endif
 
 /* Sync */
@@ -624,12 +629,22 @@ static void *wl_dispatch_thread(void *arg)
 
     uint32_t opc = wl_ctrl->opcode;
 
-    if (opc > 0 && opc < OP_MAX && wl_dispatch_table[opc])
+    if (opc > 0 && opc < OP_WL_MAX && wl_dispatch_table[opc])
     {
 #ifdef DEBUG_WAYLAND_VERBOSE
       log_console("wl dispatch thread: opc=%u", opc);
 #endif
       wl_dispatch_table[opc](wl_ctrl, wl_data);
+
+#ifdef DEBUG_OPCODES
+      g_wl_calls_since_roundtrip++;
+      if (opc == OP_wl_roundtrip)
+      {
+        log_always("=== %llu wl bridge calls since last wl_roundtrip ===",
+                   (unsigned long long)g_wl_calls_since_roundtrip);
+        g_wl_calls_since_roundtrip = 0;
+      }
+#endif
     }
 
     if (wl_ctrl->needs_response)
@@ -785,8 +800,14 @@ int main(int argc, char **argv)
     if (c->needs_response)
       g_opcode_call_count[opc]++;
 
+    g_calls_since_swap++;
+
     if (opc == OP_eglSwapBuffers)
     {
+      log_always("=== %llu bridge calls since last eglSwapBuffers ===",
+                 (unsigned long long)g_calls_since_swap);
+      g_calls_since_swap = 0;
+
       g_frame_count++;
       if (g_frame_count % STATS_WINDOW_SWAPS == 0)
         dump_opcode_stats_window();
