@@ -40,7 +40,7 @@ jobs:
       with:
         repository: "webosbrew/dev-toolbox-cli"
         latest: true
-        fileName: "webosbrew-toolbox-gen-manifest_*.deb"
+        fileName: "webosbrew-toolbox-gen-manifest_*_amd64.deb"
         out-file-path: "temp"
 
     - name: Install webOS CLI
@@ -285,7 +285,7 @@ jobs:
 
     - name: Clone (SDL-webOS)
       run: |
-        git clone -b abifix https://github.com/cscd98/SDL-webOS.git
+        git clone https://github.com/webosbrew/SDL-webOS.git
 
     - name: Configure (SDL-webOS)
       run: |
