@@ -27,6 +27,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "bridge_config.h"
+
 /* ── Shared memory names ────────────────────────────────────────────────── */
 #define GLES_BRIDGE_CTRL_SHM "0x4701"
 #define GLES_BRIDGE_DATA_SHM "0x4702"
@@ -1325,9 +1327,6 @@ typedef struct
   uint8_t _pad[4]; /* keep struct size a multiple of 8   */
 } BridgeCtrl;
 
-#define BRIDGE_RING_SLOTS 256u
-#define BRIDGE_RING_MASK (BRIDGE_RING_SLOTS - 1u)
-
 typedef struct
 {
   _Atomic uint64_t published_seq;
@@ -1338,11 +1337,18 @@ typedef struct
   int32_t proxy_pid;
   int32_t client_pid;
 
-  BridgeCtrl slots[BRIDGE_RING_SLOTS];
+  BridgeCtrl slots[]; /* length == bridge_config_ring_slots() */
 } BridgeRing;
 
 #define GLES_BRIDGE_DATA_SIZE (64u * 1024u * 1024u) /* 64 MB  */
-#define GLES_BRIDGE_CTRL_SIZE sizeof(BridgeRing)
+
+/* Total bytes needed for the BridgeRing shared-memory segment given the
+ * currently configured slot count. */
+static inline size_t bridge_ctrl_shm_size(void)
+{
+  return sizeof(BridgeRing) +
+         (size_t)bridge_config_ring_slots() * sizeof(BridgeCtrl);
+}
 
 /* ── Argument packing helpers (used by both stub and proxy) ─────────────── */
 typedef struct

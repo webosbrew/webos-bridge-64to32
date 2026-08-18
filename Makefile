@@ -304,6 +304,7 @@ $(OUT_64)/webos-input-manager.o: $(WAYLAND_GEN_C_INPUT_64)
 #    against this so they share a single proxy connection.
 # ─────────────────────────────────────────────────────────────────────────────
 CORE_OBJ := \
+  $(OUT_64)/bridge_config.o \
   $(OUT_64)/bridge_core.o \
   $(OUT_64)/bridge_shm.o \
   $(OUT_64)/shared_util.o \
@@ -322,6 +323,9 @@ $(OUT_64)/bridge_shm.o: $(BRIDGE_DIR)/bridge_shm.c
 	$(CC_64) $(CFLAGS_64_BASE) -c $< -o $@
 
 $(OUT_64)/shared_util.o: $(BRIDGE_DIR)/shared_util.c
+	$(CC_64) $(CFLAGS_64_BASE) -c $< -o $@
+
+$(OUT_64)/bridge_config.o: $(BRIDGE_DIR)/bridge_config.c
 	$(CC_64) $(CFLAGS_64_BASE) -c $< -o $@
 
 $(OUT_64)/cJSON.o: deps/cJSON.c deps/cJSON.h
@@ -478,6 +482,7 @@ endif
 # 5. gles_proxy  (armv7a)
 # ─────────────────────────────────────────────────────────────────────────────
 PROXY_OBJ := \
+    $(OUT_32)/bridge_config.o \
     $(OUT_32)/proxy.o \
     $(OUT_32)/egl.o \
     $(OUT_32)/gles2.o \
@@ -521,6 +526,9 @@ $(OUT_32)/bridge_shm.o: $(BRIDGE_DIR)/bridge_shm.c
 	$(CC_32) $(CFLAGS_32) -c $< -o $@
 
 $(OUT_32)/shared_util.o: $(BRIDGE_DIR)/shared_util.c
+	$(CC_32) $(CFLAGS_32) -c $< -o $@
+
+$(OUT_32)/bridge_config.o: $(BRIDGE_DIR)/bridge_config.c
 	$(CC_32) $(CFLAGS_32) -c $< -o $@
 
 # Tests

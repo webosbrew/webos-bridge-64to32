@@ -71,6 +71,8 @@ unsigned int g_stub_new_ctx = 0;
 
 /* ── Ring state (stub/producer side) ─────────────────────────────────── */
 static BridgeRing *g_ring = NULL;
+static uint32_t g_ring_slots = 0;
+static uint32_t g_ring_mask = 0;
 static BridgeCtrl *g_cur_slot = NULL;
 static uint64_t g_cur_seq = 0;
 
@@ -264,12 +266,15 @@ static void bridge_init(void)
 
   print_environment_version();
 
+  g_ring_slots = bridge_config_ring_slots();
+  g_ring_mask = bridge_config_ring_mask();
+
   // dump opcodes for comparison
   /*for (int i = 0; i < OP_MAX; i++) {
     log_console("%d -> %s", i, opcode_to_string(i));
   }*/
 
-  g_ctrl_shm = shm_create(GLES_BRIDGE_CTRL_SHM, GLES_BRIDGE_CTRL_SIZE);
+  g_ctrl_shm = shm_create(GLES_BRIDGE_CTRL_SHM, bridge_ctrl_shm_size());
 
   g_data_shm = shm_create(GLES_BRIDGE_DATA_SHM, GLES_BRIDGE_DATA_SIZE);
 
@@ -297,7 +302,7 @@ static void bridge_init(void)
               "client_pid offset=%zu "
               "ctrlsize=%u",
               sizeof(BridgeRing), offsetof(BridgeCtrl, client_pid),
-              GLES_BRIDGE_CTRL_SIZE);
+              bridge_ctrl_shm_size());
 #endif
 
   /* Plain (non-semaphore) eventfds — one write per command, one read per
@@ -369,7 +374,7 @@ static BridgeCtrl *ring_reserve_slot(uint64_t *out_seq)
     uint64_t completed =
         atomic_load_explicit(&g_ring->completed_seq, memory_order_acquire);
 
-    if (seq - completed < BRIDGE_RING_SLOTS)
+    if (seq - completed < g_ring_slots)
       break;
 
     /* Ring full */
@@ -382,7 +387,7 @@ static BridgeCtrl *ring_reserve_slot(uint64_t *out_seq)
 
   g_local_seq = seq + 1;
   *out_seq = seq;
-  return &g_ring->slots[seq & BRIDGE_RING_MASK];
+  return &g_ring->slots[seq & g_ring_mask];
 }
 
 /* ── Data-arena ring allocator ────────────────────────────────────────── */
@@ -543,7 +548,7 @@ void wl_bridge_init(void)
 {
   log_console("initialising wl bridge");
 
-  g_ctrl_wl_shm = shm_create(GLES_BRIDGE_WL_CTRL_SHM, GLES_BRIDGE_CTRL_SIZE);
+  g_ctrl_wl_shm = shm_create(GLES_BRIDGE_WL_CTRL_SHM, bridge_ctrl_shm_size());
 
   g_data_wl_shm = shm_create(GLES_BRIDGE_WL_DATA_SHM, GLES_BRIDGE_DATA_SIZE);
 

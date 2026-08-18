@@ -45,6 +45,8 @@ static uint64_t g_wl_calls_since_roundtrip = 0;
 static BridgeRing *ring = NULL;
 uint8_t *data = NULL;
 
+static uint32_t g_ring_mask = 0; /* cached at setup_bridge() */
+
 static BridgeShm ctrl_shm;
 static BridgeShm data_shm;
 
@@ -573,7 +575,9 @@ void at_exit_proxy_cleanup()
 int setup_bridge()
 {
   log_console("setting up bridge");
-  ctrl_shm = shm_attach(GLES_BRIDGE_CTRL_SHM, GLES_BRIDGE_CTRL_SIZE);
+
+  g_ring_mask = bridge_config_ring_mask();
+  ctrl_shm = shm_attach(GLES_BRIDGE_CTRL_SHM, bridge_ctrl_shm_size());
   data_shm = shm_attach(GLES_BRIDGE_DATA_SHM, GLES_BRIDGE_DATA_SIZE);
 
   ring = (BridgeRing *)ctrl_shm.ptr;
@@ -588,7 +592,7 @@ int setup_bridge()
               "client_pid offset=%zu "
               "ctrlsize=%u",
               sizeof(BridgeRing), offsetof(BridgeCtrl, client_pid),
-              GLES_BRIDGE_CTRL_SIZE);
+              bridge_ctrl_shm_size());
 #endif
 
   return (!ring || !data);
@@ -596,7 +600,7 @@ int setup_bridge()
 
 int setup_bridge_wl(void)
 {
-  wl_ctrl_shm = shm_attach(GLES_BRIDGE_WL_CTRL_SHM, GLES_BRIDGE_CTRL_SIZE);
+  wl_ctrl_shm = shm_attach(GLES_BRIDGE_WL_CTRL_SHM, bridge_ctrl_shm_size());
 
   wl_data_shm = shm_attach(GLES_BRIDGE_WL_DATA_SHM, GLES_BRIDGE_DATA_SIZE);
 
@@ -765,7 +769,7 @@ int main(int argc, char **argv)
       continue;
     }
 
-    BridgeCtrl *c = &ring->slots[completed & BRIDGE_RING_MASK];
+    BridgeCtrl *c = &ring->slots[completed & g_ring_mask];
     uint32_t opc = c->opcode;
 
 #ifdef DEBUG_OPCODES
