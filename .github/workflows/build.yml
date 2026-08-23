@@ -199,6 +199,8 @@ jobs:
           $SRC/libcrypto.so.3 \
           $SRC/libcurl.so.4 \
           $SRC/libcurl.so.4.8.0 \
+          $SRC/libdbus-1.so.* \
+          $SRC/libpcap.so.* \
           $SRC/libssl.so.3 \
           $SRC/libstdc++.so.* \
           $SRC/libusb-1.0.so.* \
@@ -310,6 +312,28 @@ jobs:
           $SRC/libSDL2-2.0.so.0 \
           $SRC/libSDL2-2.0.so.0.3000.12 \
           $DST/
+
+    - name: Clone gl4es
+      run: |
+        git clone https://github.com/ptitSeb/gl4es.git
+
+    - name: Build gl4es
+      run: |
+        . ${{ github.workspace }}/aarch64-webos-linux-gnu_sdk-buildroot/environment-setup
+        mkdir -p gl4es/build
+        cd gl4es/build
+
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DNOX11=ON
+
+        make -j$(nproc)
+
+    - name: Install gl4es into ipk
+      run: |
+        LIBDST=dist/ipk/lib
+        cp -av gl4es/lib/libGL.so* $LIBDST
+        ln -sf libGL.so.1 $LIBDST/libGL.so
 
     - name: Determine latest tag
       if: github.ref_type != 'tag'
