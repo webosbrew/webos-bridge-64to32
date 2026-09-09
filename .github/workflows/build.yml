@@ -292,7 +292,7 @@ jobs:
     - name: Configure (SDL-webOS)
       run: |
         cd SDL-webOS
-        cmake -B build -S . \
+        cmake -B build-sdl2 -S . \
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/aarch64-webos-linux-gnu_sdk-buildroot/share/buildroot/toolchainfile.cmake \
           -DCMAKE_BUILD_TYPE=Release -DWEBOS=ON -DSDL_OFFSCREEN=OFF -DSDL_DISKAUDIO=OFF \
           -DSDL_DUMMYAUDIO=OFF -DSDL_DUMMYVIDEO=OFF -DSDL_KMSDRM=OFF -DSDL_VENDOR_INFO="webOS Backport" \
@@ -301,16 +301,40 @@ jobs:
     - name: Build (SDL-webOS)
       run: |
         cd SDL-webOS
-        cmake --build build/ --config Release --verbose --parallel
+        cmake --build build-sdl2/ --config Release --verbose --parallel
 
     - name: Copy dependency (SDL-webOS)
       run: |
-        SRC=SDL-webOS/build
+        SRC=SDL-webOS/build-sdl2
         DST=dist/ipk/lib
         cp -av \
           $SRC/libSDL2-2.0.so \
           $SRC/libSDL2-2.0.so.0 \
           $SRC/libSDL2-2.0.so.0.3000.12 \
+          $DST/
+
+    - name: Configure (SDL3-webOS)
+      run: |
+        cd SDL-webOS
+        git clean -fxd
+        git checkout webOS-3.4.x
+        cmake -B build-sdl3 -S . \
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/aarch64-webos-linux-gnu_sdk-buildroot/share/buildroot/toolchainfile.cmake \
+          -DCMAKE_BUILD_TYPE=Release -DWEBOS=ON -DSDL_OFFSCREEN=OFF -DSDL_DISKAUDIO=OFF \
+          -DSDL_DUMMYAUDIO=OFF -DSDL_DUMMYVIDEO=OFF -DSDL_KMSDRM=OFF -DSDL_VENDOR_INFO="webOS Backport" \
+          -DSDL_WEBOS_HAVE_LIBHELPER=OFF
+
+    - name: Build (SDL3-webOS)
+      run: |
+        cd SDL-webOS
+        cmake --build build-sdl3/ --config Release --verbose --parallel
+
+    - name: Copy dependency (SDL3-webOS)
+      run: |
+        SRC=SDL-webOS/build-sdl3
+        DST=dist/ipk/lib
+        cp -av \
+          $SRC/libSDL3.so* \
           $DST/
 
     #- name: Clone gl4es
