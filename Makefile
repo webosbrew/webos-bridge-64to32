@@ -385,6 +385,7 @@ LDFLAGS_EGL := \
   -Wl,--version-script=$(STUB_DIR)/libEGL.map \
   -L$(OUT_64) \
   -lgles_bridge_core \
+  -lwayland-client \
   -Wl,-rpath-link,$(OUT_64) \
   -ldl
 
