@@ -147,8 +147,7 @@ jobs:
           $SRC/libasound.so.2.0.0 \
           $SRC/libbz2.so.1 \
           $SRC/libbz2.so.1.0.8 \
-          $SRC/libffi.so.8 \
-          $SRC/libffi.so.8.1.4 \
+          $SRC/libffi.so.* \
           $SRC/libfontconfig.so.1 \
           $SRC/libfontconfig.so.1.16.0 \
           $SRC/libfreetype.so.6 \
@@ -165,8 +164,7 @@ jobs:
           $SRC/libwayland-egl.so.1 \
           $SRC/libwayland-egl.so.1.22.0 \
           $SRC/libwayland-client.so.0.22.0 \
-          $SRC/libxkbcommon.so.0 \
-          $SRC/libxkbcommon.so.0.13.1 \
+          $SRC/libxkbcommon.so.* \
           $DST/
         cp -av \
           $SRC/pulseaudio/libpulsecommon* \
@@ -224,12 +222,9 @@ jobs:
         SRC=${{ github.workspace }}/aarch64-webos-linux-gnu_sdk-buildroot/aarch64-webos-linux-gnu/sysroot/usr/lib
         DST=dist/ipk/lib
         cp -av \
-          $SRC/libdrm.so.2 \
-          $SRC/libdrm.so.2.131.0 \
-          $SRC/libglib-2.0.so.0 \
-          $SRC/libglib-2.0.so.0.8600.5 \
-          $SRC/libpcre2-8.so.0 \
-          $SRC/libpcre2-8.so.0.15.0 \
+          $SRC/libdrm.so.* \
+          $SRC/libglib-2.0.so.* \
+          $SRC/libpcre2-8.so.* \
           $DST/
 
     - name: Copy optional gdb libs
