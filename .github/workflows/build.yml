@@ -199,6 +199,7 @@ jobs:
           $SRC/libcurl.so.4.8.0 \
           $SRC/libdbus-1.so.* \
           $SRC/libpcap.so.* \
+          $SRC/libjpeg.so.* \
           $SRC/libssl.so.3 \
           $SRC/libstdc++.so.* \
           $SRC/libusb-1.0.so.* \
