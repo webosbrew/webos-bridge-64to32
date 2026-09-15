@@ -300,8 +300,11 @@ jobs:
         cmake --build build-sdl2/ --config Release --verbose --parallel
 
     - name: Copy dependency (SDL-webOS)
+      env:
+        CC_64_PATH: ${{ github.workspace }}/aarch64-webos-linux-gnu_sdk-buildroot/bin
       run: |
         SRC=SDL-webOS/build-sdl2
+        $CC_64_PATH/aarch64-webos-linux-gnu-strip $SRC/libSDL2-2.0.so.0.3000.12
         DST=dist/ipk/lib
         cp -av \
           $SRC/libSDL2-2.0.so \
@@ -326,8 +329,12 @@ jobs:
         cmake --build build-sdl3/ --config Release --verbose --parallel
 
     - name: Copy dependency (SDL3-webOS)
+      env:
+        CC_64_PATH: ${{ github.workspace }}/aarch64-webos-linux-gnu_sdk-buildroot/bin
       run: |
         SRC=SDL-webOS/build-sdl3
+        REAL_SO=$(find "$SRC" -maxdepth 1 -type f -name 'libSDL3.so*' | head -n 1)
+        "$CC_64_PATH/aarch64-webos-linux-gnu-strip" "$REAL_SO"
         DST=dist/ipk/lib
         cp -av \
           $SRC/libSDL3.so* \
