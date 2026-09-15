@@ -7,10 +7,6 @@
 #include "bridge_config.h"
 #include "shared_util.h"
 
-#define BRIDGE_CONFIG_PATH "/media/developer/apps/usr/palm/applications/org.webosbrew.bridge-64to32/bridge.conf"
-#define BRIDGE_RING_SLOTS_MIN 64u
-#define BRIDGE_RING_SLOTS_MAX 65536u
-
 static uint32_t g_ring_slots = 0; /* 0 == not yet loaded */
 
 static int is_pow2(uint32_t v)
@@ -45,9 +41,10 @@ static uint32_t read_config_file(void)
     FILE *out = fopen(BRIDGE_CONFIG_PATH, "w");
     if (out)
     {
-      fprintf(out, "# proxy configuration\n"
-                   "# ring_slots must be a power of two\n"
-                   "ring_slots=%u\n",
+      fprintf(out,
+              "# proxy configuration\n"
+              "# ring_slots must be a power of two\n"
+              "ring_slots=%u\n",
               BRIDGE_RING_SLOTS_DEFAULT);
       fclose(out);
     }

@@ -7,6 +7,7 @@
 #endif
 
 #include <EGL/egl.h>
+#include <ctype.h>
 #include <math.h>
 #include <pthread.h>
 #include <pulse/error.h>
@@ -24,6 +25,8 @@
 
 #include "deps/font8x8_basic.h"
 
+#include "../include/bridge_config.h"
+
 #if defined(__aarch64__)
 #include "../include/webos-shell.h"
 #else
@@ -33,11 +36,15 @@
 #define AUDIO_BUF_SAMPLES 8192
 int16_t buffer[AUDIO_BUF_SAMPLES];
 
+#define KEY_WAYLAND_MAGIC_UP 103
+#define KEY_WAYLAND_MAGIC_DOWN 108
 #define KEY_WAYLAND_WEBOS_BACK 412
 #define KEY_WAYLAND_WEBOS_RED 398
 #define KEY_WAYLAND_WEBOS_GREEN 399
 #define KEY_WAYLAND_WEBOS_YELLOW 400
 #define KEY_WAYLAND_WEBOS_BLUE 401
+
+#define SETTINGS_SAVE_DEBOUNCE_SEC 0.5f
 
 // ---------------- Wayland / webOS ----------------
 struct wl_display *display;
@@ -139,6 +146,17 @@ static const char *fs = "#version 300 es\n"
                         "    c = texture(tex, uv);\n"
                         "}\n";
 
+// ---------------- Settings menu ----------------
+static int g_settings_open = 0;
+static int g_cube_paused = 0;
+static uint32_t g_ring_slots = 256;
+static float g_last_scroll_time = 0.0f;
+static int g_pending_save = 0;
+
+static GLuint settings_tex = 0;
+static int settings_tex_w = 0;
+static int settings_tex_h = 0;
+
 // ---------------- time ----------------
 static float now_sec()
 {
@@ -204,20 +222,261 @@ void stop_music(void)
   pthread_join(music_thread_id, NULL);
 }
 
+// ---------------- settings ----------------
+static int settings_is_pow2(uint32_t v)
+{
+  return v != 0 && (v & (v - 1u)) == 0;
+}
+
+static uint32_t settings_round_up_pow2(uint32_t v)
+{
+  if (v < 2u)
+    return 1u;
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  return v + 1u;
+}
+
+static uint32_t settings_load_ring_slots(void)
+{
+  uint32_t slots = 256;
+
+  FILE *f = fopen(BRIDGE_CONFIG_PATH, "r");
+  if (!f)
+  {
+    fprintf(stderr, "[settings] %s not found, using default ring_slots=%u\n",
+            BRIDGE_CONFIG_PATH, slots);
+    return slots;
+  }
+
+  char line[256];
+  while (fgets(line, sizeof(line), f))
+  {
+    char *p = line;
+    while (isspace((unsigned char)*p))
+      p++;
+
+    if (*p == '#' || *p == '\0' || *p == '\n')
+      continue;
+
+    char key[64] = {0};
+    long val = 0;
+
+    if (sscanf(p, "%63[^=]=%ld", key, &val) != 2)
+      continue;
+
+    size_t klen = strlen(key);
+    while (klen > 0 && isspace((unsigned char)key[klen - 1]))
+      key[--klen] = '\0';
+
+    char *kp = key;
+    while (isspace((unsigned char)*kp))
+      kp++;
+
+    if (strcmp(kp, "ring_slots") != 0)
+      continue;
+
+    if (val > 0)
+      slots = (uint32_t)val;
+    break;
+  }
+
+  fclose(f);
+
+  if (slots < BRIDGE_RING_SLOTS_MIN)
+    slots = BRIDGE_RING_SLOTS_MIN;
+  if (slots > BRIDGE_RING_SLOTS_MAX)
+    slots = BRIDGE_RING_SLOTS_MAX;
+  if (!settings_is_pow2(slots))
+    slots = settings_round_up_pow2(slots);
+
+  return slots;
+}
+
+static void settings_save_ring_slots(uint32_t slots)
+{
+  FILE *out = fopen(BRIDGE_CONFIG_PATH, "w");
+  if (!out)
+  {
+    fprintf(stderr, "[settings] failed to write %s: %s\n", BRIDGE_CONFIG_PATH,
+            strerror(errno));
+    return;
+  }
+
+  fprintf(out,
+          "# proxy configuration\n"
+          "# ring_slots must be a power of two\n"
+          "ring_slots=%u\n",
+          slots);
+  fclose(out);
+
+  fprintf(stderr, "[settings] saved ring_slots=%u to %s\n", slots,
+          BRIDGE_CONFIG_PATH);
+}
+
+static void make_settings_texture(uint32_t ring_slots)
+{
+  char line1[64];
+  snprintf(line1, sizeof(line1), "Ring Slots: %u", ring_slots);
+  const char *line2 =
+      "Increasing this value will increase the RAM usage of the bridge. It "
+      "will take effect on next program launch. Press back to exit.";
+
+  const int char_w = 8, char_h = 8;
+  const int scale1 = 6; /* value line */
+  const int scale2 = 4; /* note line */
+  const int line_gap = 50;
+
+  int len1 = (int)strlen(line1);
+  int len2 = (int)strlen(line2);
+
+  int w1 = len1 * char_w * scale1;
+  int w2 = len2 * char_w * scale2;
+  int W = w1 > w2 ? w1 : w2;
+  int H = char_h * scale1 + line_gap + char_h * scale2;
+
+  uint32_t *pixels = calloc((size_t)W * (size_t)H, sizeof(uint32_t));
+  if (!pixels)
+  {
+    fprintf(stderr, "[settings] calloc failed for %dx%d texture\n", W, H);
+    return;
+  }
+
+  /* line 1: value, drawn at the top, full white */
+  for (int i = 0; i < len1; i++)
+  {
+    unsigned char c = (unsigned char)line1[i];
+    for (int row = 0; row < 8; row++)
+    {
+      uint8_t bits = font8x8_basic[c][row];
+      for (int col = 0; col < 8; col++)
+      {
+        if (!(bits & (1 << col)))
+          continue;
+        for (int sy = 0; sy < scale1; sy++)
+          for (int sx = 0; sx < scale1; sx++)
+          {
+            int px = i * char_w * scale1 + col * scale1 + sx;
+            int py = (H - 1) - (row * scale1 + sy);
+            if (px >= 0 && px < W && py >= 0 && py < H)
+              pixels[py * W + px] = 0xffffffff;
+          }
+      }
+    }
+  }
+
+  /* line 2: note, drawn below line 1, dimmer */
+  int line2_top = char_h * scale1 + line_gap;
+  for (int i = 0; i < len2; i++)
+  {
+    unsigned char c = (unsigned char)line2[i];
+    for (int row = 0; row < 8; row++)
+    {
+      uint8_t bits = font8x8_basic[c][row];
+      for (int col = 0; col < 8; col++)
+      {
+        if (!(bits & (1 << col)))
+          continue;
+        for (int sy = 0; sy < scale2; sy++)
+          for (int sx = 0; sx < scale2; sx++)
+          {
+            int px = i * char_w * scale2 + col * scale2 + sx;
+            int py = (H - 1) - (line2_top + row * scale2 + sy);
+            if (px >= 0 && px < W && py >= 0 && py < H)
+              pixels[py * W + px] = 0xffaaaaaa;
+          }
+      }
+    }
+  }
+
+  if (settings_tex)
+    glDeleteTextures(1, &settings_tex);
+
+  glGenTextures(1, &settings_tex);
+  glBindTexture(GL_TEXTURE_2D, settings_tex);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, H, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+               pixels);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  settings_tex_w = W;
+  settings_tex_h = H;
+
+  free(pixels);
+}
+
 void wl_keyboard_handle_key_webos(void *data, struct wl_keyboard *keyboard,
                                   uint32_t serial, uint32_t time, uint32_t key,
                                   uint32_t state)
 {
   fprintf(stderr, "key event: code=%u state=%u\n", key, state);
 
-  if (state == WL_KEYBOARD_KEY_STATE_PRESSED)
+  if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
+    return;
+
+  if (key == KEY_WAYLAND_WEBOS_BACK)
   {
-    if (key == KEY_WAYLAND_WEBOS_BACK)
+    fprintf(stderr, "BACK key pressed — exiting\n");
+    stop_music();
+    exit(0);
+  }
+
+  if (key == KEY_WAYLAND_WEBOS_RED)
+  {
+    g_settings_open = !g_settings_open;
+    g_cube_paused = g_settings_open;
+
+    if (g_settings_open)
     {
-      fprintf(stderr, "BACK key pressed — exiting\n");
-      stop_music();
-      exit(0);
+      g_ring_slots = settings_load_ring_slots();
+      make_settings_texture(g_ring_slots);
+      fprintf(stderr, "[settings] opened, ring_slots=%u\n", g_ring_slots);
     }
+    else
+    {
+      fprintf(stderr, "[settings] closed\n");
+    }
+    return;
+  }
+
+  if (!g_settings_open)
+    return;
+
+  if (key == KEY_WAYLAND_MAGIC_UP || key == KEY_WAYLAND_MAGIC_DOWN)
+  {
+    uint32_t new_slots = g_ring_slots;
+
+    if (key == KEY_WAYLAND_MAGIC_UP)
+    {
+      if (new_slots < BRIDGE_RING_SLOTS_MAX)
+        new_slots <<= 1; /* next power of two up */
+    }
+    else
+    {
+      if (new_slots > BRIDGE_RING_SLOTS_MIN)
+        new_slots >>= 1; /* next power of two down */
+    }
+
+    if (new_slots < BRIDGE_RING_SLOTS_MIN)
+      new_slots = BRIDGE_RING_SLOTS_MIN;
+    if (new_slots > BRIDGE_RING_SLOTS_MAX)
+      new_slots = BRIDGE_RING_SLOTS_MAX;
+
+    if (new_slots != g_ring_slots)
+    {
+      g_ring_slots = new_slots;
+      make_settings_texture(g_ring_slots);
+      fprintf(stderr, "[settings] ring_slots now=%u (pending save)\n",
+              g_ring_slots);
+    }
+
+    /* debounce: only persist after scrolling stops for a moment */
+    g_last_scroll_time = now_sec();
+    g_pending_save = 1;
   }
 }
 
@@ -412,11 +671,12 @@ static void init_egl()
 static void make_text_texture()
 {
   const char *msg = "If you can see this cube and hear sound then "
-                    "webOS aarch64 test was successful!";
+                    "webOS aarch64 test was successful!. Press red button for "
+                    "bridge settings.";
 
   const int char_w = 8;
   const int char_h = 8;
-  const int scale = 2;
+  const int scale = 4;
 
   int len = strlen(msg);
   text_w = len * char_w * scale;
@@ -527,129 +787,195 @@ static void loop()
   {
     wl_display_dispatch_pending(display);
 
+    if (g_pending_save &&
+        (now_sec() - g_last_scroll_time) > SETTINGS_SAVE_DEBOUNCE_SEC)
+    {
+      settings_save_ring_slots(g_ring_slots);
+      g_pending_save = 0;
+    }
+
     float t = now_sec();
     float dt = t - last;
     last = t;
 
     // movement
-    px += vx * dt;
-    py += vy * dt;
-
-    // visible world extents at z=4
-    float z = 4.0f;
-    float aspect = 1920.0f / 1080.0f;
-    float fov = 65.0f * (3.14159265f / 180.0f);
-
-    float half_h = tanf(fov * 0.5f) * z;
-    float half_w = half_h * aspect;
-
-    // cube half-size
-    float r = 0.5f;
-
-    // bounce against actual screen edges
-    if (px > half_w - r)
+    if (!g_cube_paused)
     {
-      px = half_w - r;
-      vx = -vx;
-    }
-    if (px < -half_w + r)
-    {
-      px = -half_w + r;
-      vx = -vx;
-    }
+      px += vx * dt;
+      py += vy * dt;
 
-    if (py > half_h - r)
-    {
-      py = half_h - r;
-      vy = -vy;
-    }
-    if (py < -half_h + r)
-    {
-      py = -half_h + r;
-      vy = -vy;
-    }
+      // visible world extents at z=4
+      float z = 4.0f;
+      float aspect = 1920.0f / 1080.0f;
+      float fov = 65.0f * (3.14159265f / 180.0f);
 
-    float cx = cosf(t * 0.9f);
-    float sx = sinf(t * 0.9f);
+      float half_h = tanf(fov * 0.5f) * z;
+      float half_w = half_h * aspect;
 
-    float cy = cosf(t * 1.2f);
-    float sy = sinf(t * 1.2f);
+      // cube half-size
+      float r = 0.5f;
 
-    float near = 0.1f;
-    float far = 100.0f;
-    float f = 1.0f / tanf(fov * 0.5f);
-
-    // projection (column-major)
-    float proj[16] = {f / aspect,
-                      0,
-                      0,
-                      0,
-                      0,
-                      f,
-                      0,
-                      0,
-                      0,
-                      0,
-                      (far + near) / (near - far),
-                      -1,
-                      0,
-                      0,
-                      (2.0f * far * near) / (near - far),
-                      0};
-
-    // model (rotation + translation)
-    float model[16] = {cy,  sx * sy, cx * sy, 0, 0,  cx, -sx,   0,
-                       -sy, sx * cy, cx * cy, 0, px, py, -4.0f, 1};
-
-    float mvp[16] = {0};
-
-    // mvp = proj * model
-    for (int col = 0; col < 4; col++)
-    {
-      for (int row = 0; row < 4; row++)
+      // bounce against actual screen edges
+      if (px > half_w - r)
       {
-        for (int k = 0; k < 4; k++)
+        px = half_w - r;
+        vx = -vx;
+      }
+      if (px < -half_w + r)
+      {
+        px = -half_w + r;
+        vx = -vx;
+      }
+
+      if (py > half_h - r)
+      {
+        py = half_h - r;
+        vy = -vy;
+      }
+      if (py < -half_h + r)
+      {
+        py = -half_h + r;
+        vy = -vy;
+      }
+
+      float cx = cosf(t * 0.9f);
+      float sx = sinf(t * 0.9f);
+
+      float cy = cosf(t * 1.2f);
+      float sy = sinf(t * 1.2f);
+
+      float near = 0.1f;
+      float far = 100.0f;
+      float f = 1.0f / tanf(fov * 0.5f);
+
+      // projection (column-major)
+      float proj[16] = {f / aspect,
+                        0,
+                        0,
+                        0,
+                        0,
+                        f,
+                        0,
+                        0,
+                        0,
+                        0,
+                        (far + near) / (near - far),
+                        -1,
+                        0,
+                        0,
+                        (2.0f * far * near) / (near - far),
+                        0};
+
+      // model (rotation + translation)
+      float model[16] = {cy,  sx * sy, cx * sy, 0, 0,  cx, -sx,   0,
+                         -sy, sx * cy, cx * cy, 0, px, py, -4.0f, 1};
+
+      float mvp[16] = {0};
+
+      // mvp = proj * model
+      for (int col = 0; col < 4; col++)
+      {
+        for (int row = 0; row < 4; row++)
         {
-          mvp[col * 4 + row] += proj[k * 4 + row] * model[col * 4 + k];
+          for (int k = 0; k < 4; k++)
+          {
+            mvp[col * 4 + row] += proj[k * 4 + row] * model[col * 4 + k];
+          }
         }
+      }
+
+      glViewport(0, 0, 1920, 1080);
+
+      glClearColor(0.02f, 0.02f, 0.05f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+      glUseProgram(prog);
+      glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, mvp);
+
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, tex);
+
+      glBindVertexArray(vao);
+      glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
+
+      if ((t - start_time) < 15.0f)
+      {
+        glDisable(GL_DEPTH_TEST);
+
+        float screen_w = 1920.0f;
+        float screen_h = 1080.0f;
+
+        float pixel_w = 1400.0f; // desired banner width in pixels
+        float pixel_h = pixel_w * ((float)text_h / (float)text_w);
+
+        float ndc_w = (pixel_w / screen_w) * 2.0f;
+        float ndc_h = (pixel_h / screen_h) * 2.0f;
+
+        float left = -ndc_w * 0.5f;
+        float right = ndc_w * 0.5f;
+        float top = 0.9f;
+        float bottom = top - ndc_h;
+
+        float quad[] = {left,  top,    0, 0, 1, right, top,    0, 1, 1,
+                        right, bottom, 0, 1, 0, left,  bottom, 0, 0, 0};
+
+        static const uint16_t qidx[] = {0, 1, 2, 2, 3, 0};
+
+        GLuint qvbo, qebo, qvao;
+        glGenVertexArrays(1, &qvao);
+        glBindVertexArray(qvao);
+
+        glGenBuffers(1, &qvbo);
+        glBindBuffer(GL_ARRAY_BUFFER, qvbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+
+        glGenBuffers(1, &qebo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, qebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(qidx), qidx,
+                     GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+                              (void *)0);
+        glEnableVertexAttribArray(0);
+
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+                              (void *)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        float ident[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+
+        glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, ident);
+
+        glBindTexture(GL_TEXTURE_2D, text_tex);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
+
+        glDeleteBuffers(1, &qvbo);
+        glDeleteBuffers(1, &qebo);
+        glDeleteVertexArrays(1, &qvao);
+
+        glEnable(GL_DEPTH_TEST);
       }
     }
 
-    glViewport(0, 0, 1920, 1080);
-
-    glClearColor(0.02f, 0.02f, 0.05f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glUseProgram(prog);
-    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, mvp);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
-
-    glBindVertexArray(vao);
-    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
-
-    if ((t - start_time) < 15.0f)
+    if (g_settings_open && settings_tex)
     {
       glDisable(GL_DEPTH_TEST);
 
       float screen_w = 1920.0f;
       float screen_h = 1080.0f;
-
-      float pixel_w = 1400.0f; // desired banner width in pixels
-      float pixel_h = pixel_w * ((float)text_h / (float)text_w);
+      float pixel_w = 1400.0f;
+      float pixel_h = pixel_w * ((float)settings_tex_h / (float)settings_tex_w);
 
       float ndc_w = (pixel_w / screen_w) * 2.0f;
       float ndc_h = (pixel_h / screen_h) * 2.0f;
 
       float left = -ndc_w * 0.5f;
       float right = ndc_w * 0.5f;
-      float top = 0.9f;
-      float bottom = top - ndc_h;
+      float top = ndc_h * 0.5f;
+      float bottom = -ndc_h * 0.5f;
 
       float quad[] = {left,  top,    0, 0, 1, right, top,    0, 1, 1,
                       right, bottom, 0, 1, 0, left,  bottom, 0, 0, 0};
-
       static const uint16_t qidx[] = {0, 1, 2, 2, 3, 0};
 
       GLuint qvbo, qebo, qvao;
@@ -667,16 +993,14 @@ static void loop()
       glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
                             (void *)0);
       glEnableVertexAttribArray(0);
-
       glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
                             (void *)(3 * sizeof(float)));
       glEnableVertexAttribArray(1);
 
       float ident[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-
       glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, ident);
 
-      glBindTexture(GL_TEXTURE_2D, text_tex);
+      glBindTexture(GL_TEXTURE_2D, settings_tex);
       glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
 
       glDeleteBuffers(1, &qvbo);
