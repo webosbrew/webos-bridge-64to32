@@ -21,7 +21,7 @@ extern "C"
 #define BRIDGE_RING_SLOTS_MAX 65536u
 #define BRIDGE_ASYNC_SWAP_DEFAULT 1u
 #define BRIDGE_SPIN_US_DEFAULT 50u
-#define BRIDGE_FAST_CLIENT_WAIT_DEFAULT 0u
+#define BRIDGE_FAST_CLIENT_WAIT_DEFAULT 1u
 
   uint32_t bridge_config_ring_slots(void);
   uint32_t

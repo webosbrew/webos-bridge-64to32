@@ -5,6 +5,9 @@
 void proxy_poll_pending_syncs(void);
 #endif
 
+/* Resolve fences whose glClientWaitSync was deferred by the stub. */
+void proxy_resolve_deferred_waits(void);
+
 /* ========================================================================= */
 /* GLES 3.0                                                                  */
 /* ========================================================================= */

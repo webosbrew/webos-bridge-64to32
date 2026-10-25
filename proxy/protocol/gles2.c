@@ -1970,6 +1970,8 @@ void h_glDrawArrays(BridgeCtrl *C, uint8_t *D)
 
   if (piggyback_buffer && C->data2_size > 0)
   {
+    proxy_resolve_deferred_waits();
+
     for (uint32_t mi = 1; mi < MAX_MAPS; mi++)
     {
       if (!maps[mi].real_ptr || maps[mi].buffer != piggyback_buffer)
@@ -2133,6 +2135,10 @@ void h_glDrawElements(BridgeCtrl *C, uint8_t *D)
               syscall(SYS_gettid), mode, count, type, (void *)indices,
               is_client_ptr, attrib_count, g_current_ctx);
 #endif
+
+  if ((ebo_piggyback_buffer && C->data_size > 0) ||
+      (piggyback_buffer && C->data2_size > 0))
+    proxy_resolve_deferred_waits();
 
   if (ebo_piggyback_buffer && C->data_size > 0)
   {
@@ -2535,6 +2541,8 @@ void h_glReadPixels(BridgeCtrl *C, uint8_t *D)
   GLint x = ar_i32(&r), y = ar_i32(&r);
   GLsizei w = ar_i32(&r), h = ar_i32(&r);
   GLenum fmt = ar_u32(&r), type = ar_u32(&r);
+
+  proxy_resolve_deferred_waits();
 
 #ifdef DEBUG_VERBOSE
   log_console("h_glReadPixels: x=%d y=%d w=%d h=%d fmt=0x%04x type=0x%04x "

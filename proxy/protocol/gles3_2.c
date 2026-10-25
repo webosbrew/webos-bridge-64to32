@@ -52,6 +52,72 @@ void proxy_poll_pending_syncs(void)
 }
 #endif
 
+/* ── Deferred glClientWaitSync ───────────────────────────────────────────── */
+#define MAX_DEFERRED_SYNCS 8
+
+typedef struct
+{
+  GLsync s;
+  uint32_t handle;
+  int owned; /* app already called glDeleteSync; we delete after the wait */
+} DeferredSync;
+
+static DeferredSync g_def[MAX_DEFERRED_SYNCS];
+static uint32_t g_def_n = 0;
+
+void proxy_resolve_deferred_waits(void)
+{
+  if (!g_def_n)
+    return;
+
+  for (uint32_t i = 0; i < g_def_n; i++)
+  {
+    GLenum r;
+    do
+      r = glClientWaitSync(g_def[i].s, GL_SYNC_FLUSH_COMMANDS_BIT,
+                           GL_TIMEOUT_IGNORED);
+    while (r == GL_TIMEOUT_EXPIRED);
+
+    if (r == GL_WAIT_FAILED)
+      log_error("proxy_resolve_deferred_waits: GL_WAIT_FAILED handle=0x%x",
+                g_def[i].handle);
+
+    if (g_def[i].owned)
+      glDeleteSync(g_def[i].s);
+
+    sync_mark_done(g_def[i].handle);
+  }
+
+  g_def_n = 0;
+}
+
+static void defer_push(GLsync s, uint32_t handle)
+{
+  for (uint32_t i = 0; i < g_def_n; i++)
+    if (g_def[i].s == s)
+      return;
+
+  if (g_def_n == MAX_DEFERRED_SYNCS)
+    proxy_resolve_deferred_waits();
+
+  g_def[g_def_n].s = s;
+  g_def[g_def_n].handle = handle;
+  g_def[g_def_n].owned = 0;
+  g_def_n++;
+}
+
+/* Returns 1 if s is still pending: the deferred list now owns deletion. */
+static int defer_adopt_delete(GLsync s)
+{
+  for (uint32_t i = 0; i < g_def_n; i++)
+    if (g_def[i].s == s)
+    {
+      g_def[i].owned = 1;
+      return 1;
+    }
+  return 0;
+}
+
 static uint32_t alloc_map(void *real, uint32_t shm_offset, GLsizeiptr length,
                           GLenum target, GLuint buffer, GLbitfield access)
 {
@@ -495,6 +561,7 @@ void h_glMapBufferRange(BridgeCtrl *C, uint8_t *D)
   // Copy mapped contents into shared memory at offset 0 for this call
   if (access & GL_MAP_READ_BIT)
   {
+    proxy_resolve_deferred_waits();   /* GPU writes must be finished */
 #ifdef DEBUG_VERBOSE
     log_console("h_glMapBufferRange memcpy: real=%p length=%lld ", real,
                 length);
@@ -536,6 +603,7 @@ void h_glUnmapBuffer(BridgeCtrl *C, uint8_t *D)
 #endif
     if (!(maps[id].access & GL_MAP_FLUSH_EXPLICIT_BIT))
     {
+      proxy_resolve_deferred_waits();
       const uint8_t *src = (const uint8_t *)dp(C->data_offset);
       uint8_t *dst = (uint8_t *)maps[id].real_ptr;
 
@@ -673,8 +741,8 @@ void h_glFenceSync(BridgeCtrl *C, uint8_t *D)
     return;
   }
 
-  if (syncs[id].real) /* stale entry the client never deleted */
-    glDeleteSync(syncs[id].real);
+  if (syncs[id].real && !defer_adopt_delete(syncs[id].real))
+    glDeleteSync(syncs[id].real); /* stale entry the client never deleted */
 
   syncs[id].real = s;
   syncs[id].gen = handle >> BRIDGE_SYNC_ID_BITS;
@@ -688,7 +756,7 @@ void h_glClientWaitSync(BridgeCtrl *C, uint8_t *D)
   uint32_t handle = ar_u32(&r);
   GLbitfield flags = ar_u32(&r);
   GLuint64 timeout = ar_u64(&r);
-  uint32_t poll = ar_u32(&r);
+  uint32_t mode = ar_u32(&r); /* 0 = block, 1 = poll, 2 = defer */
 
   GLsync s = lookup_sync(handle);
   if (!s)
@@ -697,8 +765,16 @@ void h_glClientWaitSync(BridgeCtrl *C, uint8_t *D)
     return;
   }
 
+  if (mode == 2)
+  {
+    /* Stub sent this as a void call. */
+    defer_push(s, handle);
+    C->result = GL_CONDITION_SATISFIED;
+    return;
+  }
+
   GLenum res;
-  if (poll)
+  if (mode == 1)
     /* FLUSH so the fence actually reaches the GPU even if nothing else
      * is flushing the proxy's command stream */
     res = glClientWaitSync(s, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
@@ -722,7 +798,8 @@ void h_glDeleteSync(BridgeCtrl *C, uint8_t *D)
   if (s)
   {
     uint32_t id = handle & BRIDGE_SYNC_ID_MASK;
-    glDeleteSync(s);
+    if (!defer_adopt_delete(s))
+      glDeleteSync(s);
     syncs[id].real = NULL;
     syncs[id].gen = 0;
   }
@@ -816,6 +893,8 @@ void h_glFlushMappedBufferRange(BridgeCtrl *C, uint8_t *D)
               (long long)maps[id].length);
     return;
   }
+
+  proxy_resolve_deferred_waits();
 
   // Copy from shared memory into real mapped range
   memcpy((uint8_t *)maps[id].real_ptr + offset, dp(C->data_offset),
@@ -1660,6 +1739,8 @@ void h_glBindBufferRange(BridgeCtrl *C, uint8_t *D)
    * copy it into the real GPU-mapped range now, before binding. */
   if (C->data_size > 0)
   {
+    proxy_resolve_deferred_waits();
+
     for (uint32_t i = 1; i < MAX_MAPS; i++)
     {
       if (!maps[i].real_ptr || maps[i].buffer != buffer)
@@ -2727,6 +2808,10 @@ void h_glDrawElementsBaseVertex(BridgeCtrl *C, uint8_t *D)
   uint32_t piggyback_buffer = ar_u32(&r);
   uint32_t piggyback_offset = ar_u32(&r);
   uint32_t piggyback_length = ar_u32(&r);
+
+  if ((ebo_piggyback_buffer && C->data_size > 0) ||
+      (piggyback_buffer && C->data2_size > 0))
+    proxy_resolve_deferred_waits();
 
   if (ebo_piggyback_buffer && C->data_size > 0)
   {

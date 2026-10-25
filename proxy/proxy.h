@@ -67,6 +67,8 @@ static inline void apply_unpack_piggyback(const BridgeCtrl *C, uintptr_t offset)
   if (C->data2_size == 0)
     return;
 
+  proxy_resolve_deferred_waits();
+
   GLint pbo = 0;
   glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &pbo);
 

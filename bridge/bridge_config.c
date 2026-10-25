@@ -66,9 +66,9 @@ static void read_config_file(void)
               "# microseconds to busy-wait before sleeping on an eventfd\n"
               "# (0 = always sleep)\n"
               "spin_us=%u\n"
-              "# 1 = glClientWaitSync only waits for the proxy to issue the\n"
-              "# fence. Faster, but unsafe for\n"
-              "# apps that rewrite persistently mapped buffers.\n"
+              "# 1 = glClientWaitSync(GL_TIMEOUT_IGNORED) on persistently\n"
+              "# mapped buffers returns immediately; the proxy waits on the\n"
+              "# fence just before it next writes into a real mapping.\n"
               "fast_client_wait=%u\n",
               BRIDGE_RING_SLOTS_DEFAULT, BRIDGE_ASYNC_SWAP_DEFAULT,
               BRIDGE_SPIN_US_DEFAULT, BRIDGE_FAST_CLIENT_WAIT_DEFAULT);

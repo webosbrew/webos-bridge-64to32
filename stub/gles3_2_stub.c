@@ -525,6 +525,15 @@ GL_APICALL GLenum GL_APIENTRY glClientWaitSync(GLsync sync, GLbitfield flags,
     return GL_TIMEOUT_EXPIRED;
   }
 
+  if (timeout == GL_TIMEOUT_IGNORED && g_active_stub_map_count > 0 &&
+      bridge_config_fast_client_wait())
+  {
+    aw_u32(&W, 2);
+    C->args_len = W.pos;
+    BRIDGE_SEND_VOID();
+    return GL_CONDITION_SATISFIED;
+  }
+
   aw_u32(&W, 0);
   C->args_len = W.pos;
   return (GLenum)BRIDGE_SEND_CALL();

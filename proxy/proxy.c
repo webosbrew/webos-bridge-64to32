@@ -42,6 +42,8 @@ uint32_t last_opc = -1;
 static uint64_t g_wl_calls_since_roundtrip = 0;
 #endif
 
+#define FT_PROFILE_BUSY_NS (12u * 1000000u)
+
 /* ── Shared memory ───────────────────────────────────────────────────────── */
 BridgeRing *ring = NULL;
 uint8_t *data = NULL;
@@ -120,7 +122,7 @@ static uint32_t g_ft_op_cnt[OP_MAX];
 static uint64_t g_ft_frame_no = 0;
 
 /* Proxy frames busier than this get an opcode breakdown */
-#define FT_PROFILE_BUSY_NS (20u * 1000000u)
+#define FT_PROFILE_BUSY_NS (13u * 1000000u)
 #define FT_PROFILE_TOP 10
 
 static void ft_dump_op_profile(uint64_t busy_ns)
